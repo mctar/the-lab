@@ -1,6 +1,6 @@
 import {WORKSHOP_NAME,hasTimer,type Session} from '../server/model';
 
-export const WORKSHOP_BRIEF='Build something that brings people together.';
+export const WORKSHOP_BRIEF='Create something that brings people together.';
 export const WORKSHOP_PROMPT_LABEL='Today’s prompt';
 export const REFLECTION_PROMPTS=[
   'What was the AI’s concept?',
