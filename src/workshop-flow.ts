@@ -10,7 +10,12 @@ export const REFLECTION_PROMPTS=[
 
 export const STAGE_STEPS=['Join','Get a plan','Build','Reflect','Make it yours','Finish'];
 const stageCues=[
-  {title:'Get an AI build plan',steps:['Spread out your loose bricks. Take a photo.','Send the photo and prompt to your AI app.',`When you have your instructions, bring them back into ${WORKSHOP_NAME}`]},
+  {title:'Get an AI build plan',steps:[
+    'Spread out your loose bricks. Take a photo.',
+    'Send the photo and prompt to your AI app.',
+    'Let the AI app create a concept and instructions.',
+    `When you have your instructions, bring them back into ${WORKSHOP_NAME}`,
+  ]},
   {title:'Build what the AI suggests',steps:['Try the AI’s plan with the pieces you have.','If a piece is missing, use the closest one.',`Come back to ${WORKSHOP_NAME} when the round ends.`]},
   {title:'Reflect on the first build',steps:REFLECTION_PROMPTS},
   {title:'Make it yours',steps:['Return to the same AI chat.','Tell it what you want to change.','Develop the concept in your own direction. It can become a game, an experience, or anything else.']},

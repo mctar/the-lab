@@ -109,6 +109,7 @@ export function StageScreen({snapshot,connected,error,qr,joinUrl,photo}:StagePro
   const rehearsal=/dry run|rehearsal|visual qa|load test/i.test(s.title);
   const showSpotlight=!s.galleryPaused&&snapshot.gallery.length>0;
   const timed=hasTimer(s)&&!s.closed;
+  const gettingPlan=s.phase===0&&!s.closed;
   return <div className={`play-stage stage-scene-${lobby?'lobby':view}`} data-motion={motion?'on':'off'}>
     <div className="play-background" aria-hidden="true"><Brick color={COLORS[0]}/><Brick color={COLORS[1]}/><Brick color={COLORS[2]}/></div>
     <header className="play-header"><div className="play-brand"><span className="brand-brick"><i/><i/></span><b>{WORKSHOP_NAME}</b>{rehearsal&&<span className="rehearsal-tag">DRY RUN</span>}</div><div className={'play-live'+(!connected||error?' reconnecting':'')} role="status"><i/>{connected&&!error?'LIVE':'RECONNECTING'}</div></header>
@@ -124,7 +125,7 @@ export function StageScreen({snapshot,connected,error,qr,joinUrl,photo}:StagePro
         view==='gallery'?<Gallery snapshot={snapshot} photo={photo}/>:
         view==='reflections'?<Reflections snapshot={snapshot}/>:
         <div className={'cue-board'+(timed||showSpotlight?' has-side':'')}>
-          <div className="cue-main"><ol>{cue.steps.map(line=><li key={line}>{line}</li>)}</ol>{s.phase===0&&!s.closed&&<div className="cue-brief"><span>{WORKSHOP_PROMPT_LABEL}</span><strong>{WORKSHOP_BRIEF}</strong></div>}</div>
+          <div className="cue-main"><ol>{cue.steps.map((line,index)=><li key={line} className={gettingPlan&&index===2?'cue-explanation':undefined}>{line}</li>)}</ol>{gettingPlan&&<div className="cue-brief"><span>{WORKSHOP_PROMPT_LABEL}</span><strong>{WORKSHOP_BRIEF}</strong></div>}</div>
           {(timed||showSpotlight)&&<div className="cue-side"><RoundClock session={s}/>{showSpotlight&&<Spotlight cards={snapshot.gallery} paused={false} photo={photo}/>}</div>}
         </div>}
     </main>

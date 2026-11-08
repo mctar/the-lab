@@ -105,6 +105,7 @@
 .cue-main { min-width: 0; }
 .cue-main ol { list-style: none; padding: 0; margin: 0; counter-reset: stage-instruction; display: grid; gap: clamp(13px, 2.5vh, 32px); }
 .cue-main li { counter-increment: stage-instruction; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: clamp(14px, 1.8vw, 34px); color: #f8f4e9; font-size: clamp(24px, 4.4vh, 52px); line-height: 1.15; font-weight: 650; letter-spacing: -.025em; }
+.cue-main li.cue-explanation { font-weight: 450; }
 .cue-main li::before { content: counter(stage-instruction); display: grid; place-items: center; width: 1.4em; height: 1.4em; border-radius: .18em; background: var(--play-blue); color: #17191e; font-weight: 850; font-variant-numeric: tabular-nums; }
 .cue-brief { background: #f8f4e9; color: #1a1a1d; padding: clamp(14px, 2.7vh, 32px) clamp(18px, 2.2vw, 40px); width: fit-content; margin-top: clamp(16px, 3vh, 38px); border-radius: 9px; box-shadow: 5px 6px #ffffff28; }
 .cue-brief > span { display: block; font-size: clamp(15px, 2vh, 24px); font-weight: 750; }
