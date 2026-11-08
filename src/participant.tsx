@@ -90,7 +90,7 @@ function CopyPrompt({text}:{text:string}){
   return <div className="brick-copy"><textarea ref={field} className="field" aria-label="Prompt to copy" readOnly value={text} rows={3}/><Button onClick={()=>void copy()}>Copy prompt</Button>{status&&<p role="status">{status}</p>}</div>;
 }
 
-function Handoff({photo,aiName,onBack,onReady}:{photo:string;aiName:string;onBack:()=>void;onReady:(hasPlan:boolean)=>void}){
+function Handoff({photo,aiName,onReady}:{photo:string;aiName:string;onReady:(hasPlan:boolean)=>void}){
   const [manual,setManual]=useState(false),[notice,setNotice]=useState('');
   async function share(){
     try{
@@ -117,7 +117,6 @@ function Handoff({photo,aiName,onBack,onReady}:{photo:string;aiName:string;onBac
     </details>
     <div className="brick-next"><p>Come back here when your AI gives you a plan.</p><Button onClick={()=>onReady(true)}>I have my plan</Button></div>
     <details className="brick-details"><summary>Can’t get a plan?</summary><p>You can still try a quick build using today’s prompt.</p><Button onClick={()=>onReady(false)}>Continue without a plan</Button></details>
-    <button className="brick-text-button" type="button" onClick={onBack}>Change my loose-brick photo</button>
   </>;
 }
 
@@ -174,10 +173,30 @@ function ParticipantFlow({w}:{w:Workshop}){
   function move(target:number){
     setNotice('');w.edit({step:target,waitingForPhase:null});save({progress:target});
   }
+  function openHandoff(){
+    history.replaceState({workshop:w.key,photoStep:2},'');
+    history.pushState({workshop:w.key,photoStep:3},'');
+    move(3);
+  }
+  function changePilePhoto(){
+    if(history.state?.workshop===w.key&&history.state.photoStep===3)history.back();
+    else move(2);
+  }
   function advance(target:number){
     if(CARD_PHASE[target]>s.phase){w.edit({waitingForPhase:CARD_PHASE[target]});return;}
     move(target);
   }
+  useEffect(()=>{
+    function restorePhotoStep({state}:PopStateEvent){
+      // History is only for the photo and handoff, and only within this participant's run.
+      if(w.reset||w.identity.session.closed||w.identity.session.phase<CARD_PHASE[2])return;
+      if(state?.workshop!==w.key)return;
+      if(state.photoStep===2&&w.draft.step===3)move(2);
+      else if(state.photoStep===3&&w.draft.step===2&&w.draft.pilePhoto)move(3);
+    }
+    window.addEventListener('popstate',restorePhotoStep);
+    return()=>window.removeEventListener('popstate',restorePhotoStep);
+  },[w]);
   useEffect(()=>{
     const timer=setInterval(()=>void w.flush(),2500+Math.random()*4000);
     return()=>clearInterval(timer);
@@ -203,10 +222,10 @@ function ParticipantFlow({w}:{w:Workshop}){
     title='Choose your AI app';content=<AIChoice value={a.aiTool} onChange={aiTool=>save({aiTool})}/>;
   }else if(step===2){
     title='Photograph your loose bricks';
-    content=<><p className="brick-lede">Spread the pieces out and take one photo from above. You’ll send this photo to {aiName} for a build plan.</p><Photo value={d.pilePhoto} label="Your loose bricks" onChange={pilePhoto=>w.edit({pilePhoto,handedOff:false})}/>{d.pilePhoto&&<Button solid onClick={()=>move(3)}>Use this photo</Button>}</>;
+    content=<><p className="brick-lede">Spread the pieces out and take one photo from above. You’ll send this photo to {aiName} for a build plan.</p><Photo value={d.pilePhoto} label="Your loose bricks" onChange={pilePhoto=>w.edit({pilePhoto,handedOff:false})}/>{d.pilePhoto&&<Button solid onClick={openHandoff}>Use this photo</Button>}</>;
   }else if(step===3){
     title='Get an AI build plan';
-    content=<Handoff photo={d.pilePhoto} aiName={aiName} onBack={()=>move(2)} onReady={handedOff=>{w.edit({handedOff});advance(4);}}/>;
+    content=<Handoff photo={d.pilePhoto} aiName={aiName} onReady={handedOff=>{w.edit({handedOff});advance(4);}}/>;
   }else if(step===4){
     title=d.handedOff?'Build what the AI suggests':'Try a build';
     content=<><p className="brick-lede">{d.handedOff?'Follow the plan as far as you can. If a piece is missing, use the closest one.':WORKSHOP_BRIEF}</p><p className="brick-note">When the round ends, come back here to photograph what you built.</p></>;
@@ -252,6 +271,7 @@ function ParticipantFlow({w}:{w:Workshop}){
       <h1 tabIndex={-1}>{title}</h1>
       {showClock&&<RoundClock session={s}/>}
       {content}
+      {!s.closed&&step===3&&phaseForStep<=s.phase&&<button className="brick-text-button" type="button" onClick={changePilePhoto}>Change my loose-brick photo</button>}
       {notice&&<p className="brick-error" role="alert">{notice}</p>}
       <div className="brick-save" role="status">{w.message||(w.jobs.length?'Saved on this phone · sending when connected':online?'Saved':'Saved on this phone')}{w.message&&<Button onClick={()=>void w.retry()}>{w.blocked?'Reconnect':'Retry now'}</Button>}</div>
     </main>
