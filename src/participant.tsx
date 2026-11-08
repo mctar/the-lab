@@ -61,7 +61,7 @@ export function Join(){
   </main></div>;
 }
 
-function Photo({value,label,onChange,disabled=false}:{value:string;label:string;onChange:(value:string)=>void;disabled?:boolean}){
+function Photo({value,label,onChange,onUsePhoto,disabled=false}:{value:string;label:string;onChange:(value:string)=>void;onUsePhoto?:()=>void;disabled?:boolean}){
   const [error,setError]=useState(''),[busy,setBusy]=useState(false);
   async function choose(input:HTMLInputElement){
     const file=input.files?.[0];if(!file)return;
@@ -72,8 +72,9 @@ function Photo({value,label,onChange,disabled=false}:{value:string;label:string;
   }
   return <div className="photo capture brick-photo" role="group" aria-label={label}>
     {value&&<img src={value} alt={label}/>}
+    {value&&onUsePhoto&&<Button solid onClick={onUsePhoto} disabled={busy||disabled}>Use this photo</Button>}
     <div className="photo-actions">
-      <label className="pill" aria-disabled={busy||disabled}>{value?'Take another photo':'Take a photo'}<input type="file" data-source="camera" aria-label={`Take a photo: ${label}`} accept="image/*" capture="environment" disabled={busy||disabled} onChange={e=>void choose(e.currentTarget)}/></label>
+      <label className={onUsePhoto&&!value?'pill solid':'pill'} aria-disabled={busy||disabled}>{value?'Take another photo':'Take a photo'}<input type="file" data-source="camera" aria-label={`Take a photo: ${label}`} accept="image/*" capture="environment" disabled={busy||disabled} onChange={e=>void choose(e.currentTarget)}/></label>
       <label className="pill" aria-disabled={busy||disabled}>Choose from camera roll<input type="file" data-source="library" aria-label={`Choose from camera roll: ${label}`} accept="image/*" disabled={busy||disabled} onChange={e=>void choose(e.currentTarget)}/></label>
     </div>
     {busy&&<p className="brick-note" role="status">Preparing your photo…</p>}
@@ -91,7 +92,7 @@ function CopyPrompt({text}:{text:string}){
 }
 
 function Handoff({photo,aiName,onReady}:{photo:string;aiName:string;onReady:(hasPlan:boolean)=>void}){
-  const [manual,setManual]=useState(false),[notice,setNotice]=useState('');
+  const [helpOpen,setHelpOpen]=useState(false),[notice,setNotice]=useState('');
   async function share(){
     try{
       // Build the file synchronously so mobile browsers keep the tap that opens the share sheet.
@@ -100,23 +101,22 @@ function Handoff({photo,aiName,onReady}:{photo:string;aiName:string;onReady:(has
       const data={files:[file],text:buildPrompt};
       if(navigator.canShare?.(data)){
         await navigator.share(data);
-        setNotice('In your AI chat, check that both the photo and prompt came through. Send them, then come back with your plan.');
-      }else setManual(true);
-    }catch(e){if((e as Error).name!=='AbortError')setManual(true);}
+        setNotice('Check that the photo and prompt are both in your AI chat, then send.');
+      }else setHelpOpen(true);
+    }catch(e){if((e as Error).name!=='AbortError')setHelpOpen(true);}
   }
   return <>
-    <p className="brick-lede">Send your loose-brick photo and the prompt to {aiName}. Ask it for an idea and instructions you can build.</p>
     <div className="brick-brief"><span>{WORKSHOP_PROMPT_LABEL}</span><strong>{WORKSHOP_BRIEF}</strong></div>
     <Button solid onClick={()=>void share()}>Click here to send photo + prompt</Button>
     {notice&&<p className="brick-note" role="status">{notice}</p>}
-    <details className="brick-details" open={manual} onToggle={event=>setManual(event.currentTarget.open)}>
-      <summary>Send manually</summary>
-      <p>Copy the prompt and save your loose-brick photo. In {aiName}, paste the prompt and attach the photo from Photos or Downloads.</p>
+    <div className="brick-next"><p>Come back here when you have your instructions.</p><Button onClick={()=>onReady(true)}>I have my instructions</Button></div>
+    <details className="brick-details brick-handoff-help" open={helpOpen} onToggle={event=>setHelpOpen(event.currentTarget.open)}>
+      <summary>Need help?</summary>
+      <p>To send manually, copy the prompt and save the photo. Open {aiName}, paste the prompt and attach the photo.</p>
       <CopyPrompt text={buildPrompt}/>
-      <a className="pill" href={photo} download="my-loose-bricks.jpg">Save loose-brick photo</a>
+      <a className="pill" href={photo} download="my-loose-bricks.jpg">Save photo</a>
+      <div><button className="brick-text-button" type="button" onClick={()=>onReady(false)}>Continue without a plan</button></div>
     </details>
-    <div className="brick-next"><p>Come back here when your AI gives you a plan.</p><Button onClick={()=>onReady(true)}>I have my plan</Button></div>
-    <details className="brick-details"><summary>Can’t get a plan?</summary><p>You can still try a quick build using today’s prompt.</p><Button onClick={()=>onReady(false)}>Continue without a plan</Button></details>
   </>;
 }
 
@@ -222,9 +222,9 @@ function ParticipantFlow({w}:{w:Workshop}){
     title='Choose your AI app';content=<AIChoice value={a.aiTool} onChange={aiTool=>save({aiTool})}/>;
   }else if(step===2){
     title='Photograph your loose bricks';
-    content=<><p className="brick-lede">Spread the pieces out and take one photo from above. You’ll send this photo to {aiName} for a build plan.</p><Photo value={d.pilePhoto} label="Your loose bricks" onChange={pilePhoto=>w.edit({pilePhoto,handedOff:false})}/>{d.pilePhoto&&<Button solid onClick={openHandoff}>Use this photo</Button>}</>;
+    content=<>{!d.pilePhoto&&<p className="brick-lede">Spread the pieces out. Take one photo from above.</p>}<Photo value={d.pilePhoto} label="Your loose bricks" onChange={pilePhoto=>w.edit({pilePhoto,handedOff:false})} onUsePhoto={openHandoff}/></>;
   }else if(step===3){
-    title='Get an AI build plan';
+    title=`Send to ${aiName}`;
     content=<Handoff photo={d.pilePhoto} aiName={aiName} onReady={handedOff=>{w.edit({handedOff});advance(4);}}/>;
   }else if(step===4){
     title=d.handedOff?'Build what the AI suggests':'Try a build';
@@ -271,7 +271,7 @@ function ParticipantFlow({w}:{w:Workshop}){
       <h1 tabIndex={-1}>{title}</h1>
       {showClock&&<RoundClock session={s}/>}
       {content}
-      {!s.closed&&step===3&&phaseForStep<=s.phase&&<button className="brick-text-button" type="button" onClick={changePilePhoto}>Change my loose-brick photo</button>}
+      {!s.closed&&step===3&&phaseForStep<=s.phase&&<button className="brick-text-button" type="button" onClick={changePilePhoto}>Change photo</button>}
       {notice&&<p className="brick-error" role="alert">{notice}</p>}
       <div className="brick-save" role="status">{w.message||(w.jobs.length?'Saved on this phone · sending when connected':online?'Saved':'Saved on this phone')}{w.message&&<Button onClick={()=>void w.retry()}>{w.blocked?'Reconnect':'Retry now'}</Button>}</div>
     </main>

@@ -61,7 +61,9 @@
 .brick-copy { display: grid; justify-items: start; gap: 8px; margin: 12px 0; }
 .brick-copy > p { margin: 0; }
 .brick-next { margin: 18px 0; border-top: 1px solid #ffffff30; padding-top: 14px; }
-.brick-next p { margin: 0; }
+.brick-next p { margin: 0; color: var(--brick-muted); font-size: 15px; }
+.brick-handoff-help { border: 0; padding: 0; margin: 8px 0 0; }
+.brick-handoff-help > summary { min-height: 44px; padding-block: 10px; color: #b9ddff; }
 .brick-save { display: flex; align-items: center; gap: 10px; margin-top: 18px; color: var(--brick-muted); font-size: 13px; }
 .brick-error { color: #ffc1bc; }
 .brick-concept-print { padding: 18px; background: #f8f4e9; color: #191b1c; border-radius: 9px; overflow-wrap: anywhere; }
