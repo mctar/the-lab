@@ -34,7 +34,7 @@
 .brick-mobile .field { min-width: 0; width: 100%; border: 1px solid var(--brick-outline); background: var(--brick-surface); color: var(--brick-ink); border-radius: 8px; font: inherit; padding: 11px 13px; }
 .brick-field { display: grid; gap: 8px; margin: 18px 0; font-weight: 650; }
 .brick-room-code { display: flex; align-items: center; gap: 9px; color: var(--brick-muted); margin-bottom: 18px; font-size: 14px; }
-.brick-room-code button, .brick-text-button, .brick-return { border: 0; background: none; padding: 5px 0; color: #b9ddff; font: inherit; text-decoration: underline; text-underline-offset: 4px; cursor: pointer; }
+.brick-text-button, .brick-return { border: 0; background: none; padding: 5px 0; color: #b9ddff; font: inherit; text-decoration: underline; text-underline-offset: 4px; cursor: pointer; }
 .brick-text-button, .brick-return { display: inline-block; margin-top: 14px; font-size: 15px; }
 .brick-consent { display: flex; gap: 11px; align-items: flex-start; font-size: 15px; margin: 18px 0; }
 .brick-consent input { accent-color: var(--brick-accent); width: 19px; height: 19px; margin: 2px 0; flex: none; }

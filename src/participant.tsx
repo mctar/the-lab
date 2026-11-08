@@ -17,7 +17,8 @@ function Poll({value,onChange,label}:{value:number|undefined;onChange:(value:num
 export function Join(){
   const params=new URLSearchParams(location.hash.split('?')[1]||'');
   const initialCode=params.get('code')||'';
-  const [code,setCode]=useState(initialCode),[showCode,setShowCode]=useState(initialCode.length<6);
+  const [code,setCode]=useState(initialCode);
+  const showCode=initialCode.length<6;
   const [aiTool,setAiTool]=useState<Answers['aiTool']>(),[share,setShare]=useState(false),[before,setBefore]=useState<number>();
   const [error,setError]=useState(''),[busy,setBusy]=useState(false);
   const previous=localStorage.getItem('bwt:last');
@@ -46,7 +47,7 @@ export function Join(){
     <p className="brick-lede">Have your LEGO bricks and your AI app ready.</p>
     {params.get('reset')==='1'&&<p className="brick-note" role="status">The facilitator started a fresh round. Join again to begin.</p>}
     <form onSubmit={join}>
-      {showCode?<label className="brick-field">Room code<input className="field" value={code} onChange={e=>setCode(e.target.value.toUpperCase())} autoComplete="off" autoCapitalize="characters" minLength={6} maxLength={12} required/></label>:<p className="brick-room-code">Room <strong>{code}</strong> <button type="button" onClick={()=>setShowCode(true)}>Change code</button></p>}
+      {showCode?<label className="brick-field">Room code<input className="field" value={code} onChange={e=>setCode(e.target.value.toUpperCase())} autoComplete="off" autoCapitalize="characters" minLength={6} maxLength={12} required/></label>:<p className="brick-room-code">Room <strong>{code}</strong></p>}
       <AIChoice value={aiTool} onChange={setAiTool} disabled={busy}/>
       <label className="brick-consent"><input type="checkbox" checked={share} onChange={e=>setShare(e.target.checked)}/><span>Allow me to share my builds on the big screen. <small>You choose what to send.</small></span></label>
       <details className="brick-details"><summary>Optional opening question</summary><p>How do you usually work with AI?</p><Poll label="How do you usually work with AI?" value={before} onChange={setBefore}/></details>
