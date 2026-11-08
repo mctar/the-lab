@@ -8,7 +8,11 @@ import { REFLECTION_PROMPTS, STAGE_STEPS, WORKSHOP_BRIEF, WORKSHOP_PROMPT_LABEL 
 import { useActivityReport } from './telemetry';
 import './participant.css';
 
-const buildPrompt=`${WORKSHOP_BRIEF}\n\nUse the loose LEGO bricks in the attached photo to propose one playful concept. Give it a name and explain it in one sentence. Then give me a short, numbered build plan using the pieces you can see. Say when you are unsure about a piece and suggest a substitution. If you can, show what the build could look like.`;
+const buildPrompt=`${WORKSHOP_BRIEF}
+
+Use the loose LEGO bricks in the attached photo to propose one playful concept. Give it a name and explain it in one sentence.
+
+Create a step-by-step visual build plan using the pieces in the photo. Include one numbered illustration or diagram per step. Show which pieces to add and exactly where they connect. End with a view of the finished build. If you’re unsure about a piece, say so and suggest a substitute from the photo.`;
 
 function Poll({value,onChange,label}:{value:number|undefined;onChange:(value:number)=>void;label:string}){
   return <div className="brick-poll" role="group" aria-label={label}>{SCALE.map(([name,description],i)=><button type="button" key={name} aria-pressed={value===i} onClick={()=>onChange(i)}><strong>{description}</strong><span>{name}</span></button>)}</div>;
