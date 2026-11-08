@@ -1,5 +1,5 @@
 import React,{useEffect,useRef,useState,type CSSProperties} from 'react';
-import {INSTRUCTION_EASE,SCALE,hasTimer,type Card,type Snapshot} from '../server/model';
+import {INSTRUCTION_EASE,SCALE,WORKSHOP_NAME,hasTimer,type Card,type Snapshot} from '../server/model';
 import {pairedMovement} from './stage-data';
 import {RoundClock} from './round-clock';
 import {stageCue,STAGE_STEPS,WORKSHOP_BRIEF,WORKSHOP_PROMPT_LABEL} from './workshop-flow';
@@ -111,7 +111,7 @@ export function StageScreen({snapshot,connected,error,qr,joinUrl,photo}:StagePro
   const timed=hasTimer(s)&&!s.closed;
   return <div className={`play-stage stage-scene-${lobby?'lobby':view}`} data-motion={motion?'on':'off'}>
     <div className="play-background" aria-hidden="true"><Brick color={COLORS[0]}/><Brick color={COLORS[1]}/><Brick color={COLORS[2]}/></div>
-    <header className="play-header"><div className="play-brand"><span className="brand-brick"><i/><i/></span><b>BRICK</b><span className="brand-divider"/><span>BUILDERS WITH TASTE</span>{rehearsal&&<span className="rehearsal-tag">DRY RUN</span>}</div><div className={'play-live'+(!connected||error?' reconnecting':'')} role="status"><i/>{connected&&!error?'LIVE':'RECONNECTING'}</div></header>
+    <header className="play-header"><div className="play-brand"><span className="brand-brick"><i/><i/></span><b>{WORKSHOP_NAME}</b>{rehearsal&&<span className="rehearsal-tag">DRY RUN</span>}</div><div className={'play-live'+(!connected||error?' reconnecting':'')} role="status"><i/>{connected&&!error?'LIVE':'RECONNECTING'}</div></header>
     <div className="play-title-row cue-title-row">
       <div><p className="cue-kicker">{s.closed?'Workshop complete':`${cue.step+1} / ${STAGE_STEPS.length} · ${STAGE_STEPS[cue.step]}`}</p><h1>{cue.title}</h1>{!lobby&&view!=='overview'&&<p className="cue-reminder">{cue.steps[0]}</p>}</div>
       {!lobby&&view!=='overview'&&<RoundClock session={s} compact/>}
@@ -131,6 +131,6 @@ export function StageScreen({snapshot,connected,error,qr,joinUrl,photo}:StagePro
     <footer className="play-footer"><div className="phase-trail" aria-label="Session progress">{STAGE_STEPS.map((label,i)=><span key={label} className={cue.step===i?'current':cue.step>i?'past':''}><i>{i+1}</i><b>{label}</b></span>)}</div><div className="play-footer-actions"><button onClick={toggle} aria-pressed={motionPaused} disabled={reducedMotion}>{reducedMotion?'Reduced motion':motionPaused?'▶ Motion':'Ⅱ Motion'}</button><button onClick={()=>document.documentElement.requestFullscreen?.()}>⛶ Full screen</button><span className="stage-updated">Updated {new Date(snapshot.capturedAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</span></div></footer>
     {!lobby&&!s.closed&&<button className="play-join-tab" onClick={()=>setJoinOpen(true)} aria-label="Show the join QR code">{qr}<span>JOIN<strong>{s.code}</strong></span></button>}
     {error&&<p className="play-connection-note" role="status">{error} · Showing the last saved room picture.</p>}
-    {joinOpen&&!s.closed&&<div className="play-join-overlay" role="dialog" aria-modal="true" aria-label="Join the session"><button className="join-overlay-close" onClick={()=>setJoinOpen(false)} aria-label="Close join code">×</button><p className="play-eyebrow">BRICK · BUILDERS WITH TASTE</p><h2>Join the workshop</h2><a href={joinUrl}>{qr}</a><strong>{s.code}</strong><span>Scan the QR or enter the code on your phone.</span></div>}
+    {joinOpen&&!s.closed&&<div className="play-join-overlay" role="dialog" aria-modal="true" aria-label="Join the session"><button className="join-overlay-close" onClick={()=>setJoinOpen(false)} aria-label="Close join code">×</button><p className="play-eyebrow">{WORKSHOP_NAME}</p><h2>Join the workshop</h2><a href={joinUrl}>{qr}</a><strong>{s.code}</strong><span>Scan the QR or enter the code on your phone.</span></div>}
   </div>;
 }

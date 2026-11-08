@@ -1,4 +1,4 @@
-# Builders with Taste
+# The Lab
 
 This is the live brick-building workshop for roughly 200 participants. Use [README.md](README.md) for local setup, rehearsal, deployment, and recovery. The participant app, facilitator dashboard, and projection screen share the same React/TypeScript frontend.
 

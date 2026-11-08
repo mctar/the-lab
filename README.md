@@ -1,8 +1,8 @@
-# Builders with Taste
+# The Lab
 
 A mobile workshop app with facilitator-controlled phases and a live projection screen. Frontend: React/TypeScript on GitHub Pages. Backend: Fastify, PostgreSQL, and private image storage on Hugin.
 
-Running a workshop? See the [Brick facilitator guide](FACILITATOR-GUIDE.md).
+Running a workshop? See [The Lab facilitator guide](FACILITATOR-GUIDE.md).
 
 Participants scan the lobby QR, choose their AI app, and join on one screen. They photograph their loose bricks, send the photo and today’s prompt to their own AI, and try its plan. The facilitator opens a separate build-photo step before reflection. Participants then develop the idea in the same AI chat and can share a short concept card. They can vote during the final reflection. Written reflection notes and loose-brick photos stay on the phone. The stage shows shared builds, room totals, and aggregate responses.
 
@@ -45,7 +45,7 @@ The load test creates a separate, clearly named session, exercises 400 identitie
 
 ## Hugin deployment
 
-Connect using `ssh hugin`. Keep this app in `~/experiments/builders-with-taste` with its own Compose project. Keep photographs under `/data/services/gervilabs/builders-with-taste/photos` (the mounted directory contains a `photos` subdirectory); PostgreSQL lives in the dedicated Compose volume. Do not reuse Kaupang's database.
+Connect using `ssh hugin`. The Lab lives in `~/experiments/the-lab`. Keep the existing `COMPOSE_PROJECT_NAME` and `PHOTO_DIRECTORY` in the live `.env` so deployments continue to use the same PostgreSQL volume and photo storage. The mounted directory contains a `photos` subdirectory.
 
 1. Copy `.env.example` to `.env`. Generate separate random `DB_PASSWORD` and `ADMIN_TOKEN` values; keep this file mode 600. Use URL-safe characters in the database password. Never commit it.
 2. Create `PHOTO_DIRECTORY` and give UID 1000 access to it.

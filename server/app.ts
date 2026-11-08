@@ -67,7 +67,7 @@ export async function createApp(opts: Options) {
     const result=await fn();
     await q('INSERT INTO operations(owner,operation_id,digest,result) VALUES($1,$2,$3,$4)',[owner,op,digest,JSON.stringify(result)]); return result;
   }
-  app.get('/health', async()=>{ await db.query('SELECT 1'); return {ok:true, service:'builders-with-taste'}; });
+  app.get('/health', async()=>{ await db.query('SELECT 1'); return {ok:true, service:'the-lab'}; });
   app.post('/v1/sessions',async(req,reply)=>{
     const token=req.headers.authorization?.replace(/^Bearer /,'') || '';
     if(!opts.adminToken || !timingSafeEqual(Buffer.from(hash(token)),Buffer.from(hash(opts.adminToken)))) fail(401,'Not authorized.');

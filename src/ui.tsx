@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { WORKSHOP_NAME } from '../server/model';
 import { live } from './client';
 
 export function useLive(id:string,token:string,refresh:()=>void){
@@ -21,5 +22,5 @@ export function Button({children,onClick,disabled=false,solid=false}:{children:R
 }
 
 export function Shell({children}:{children:ReactNode}){
-  return <div className="utility-shell"><a className="wordmark" href="#/">Brick <span>Gervi Labs</span></a>{children}</div>;
+  return <div className="utility-shell"><a className="wordmark" href="#/">{WORKSHOP_NAME} <span>Gervi Labs</span></a>{children}</div>;
 }

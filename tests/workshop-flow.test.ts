@@ -24,7 +24,7 @@ test('the six-step workshop gives the room time to capture, then starts one shar
     assert.equal(participant.data.share,false);
     const retry=await call('POST','/v1/join','',{code:room.code,joinKey,aiTool:'Claude',share:true});
     assert.deepEqual(retry.data.participant,participant);
-    assert.equal(stageCue(joinResult.data.session).title,'Join Brick');
+    assert.equal(stageCue(joinResult.data.session).title,'Join The Lab');
 
     let hostRevision=0,participantRevision=0;
     const control=async(patch:Record<string,unknown>)=>{

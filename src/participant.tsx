@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { CARD_PHASE, INSTRUCTION_EASE, PHASES, SCALE, hasTimer, participantLabel, type Answers, type Participant, type Session } from '../server/model';
+import { CARD_PHASE, INSTRUCTION_EASE, PHASES, SCALE, WORKSHOP_NAME, hasTimer, participantLabel, type Answers, type Participant, type Session } from '../server/model';
 import { request, Workshop, photograph, type Identity } from './client';
 import { AIChoice } from './ai-choice';
 import { Button, Shell, useLive } from './ui';
@@ -46,7 +46,7 @@ export function Join(){
   }
 
   return <div className="brick-mobile brick-join"><main className="brick-pane">
-    <p className="brick-kicker">Brick · Builders with Taste</p>
+    <p className="brick-kicker">{WORKSHOP_NAME}</p>
     <h1>Join the workshop</h1>
     <p className="brick-lede">Have your LEGO bricks and your AI app ready.</p>
     {params.get('reset')==='1'&&<p className="brick-note" role="status">The facilitator started a fresh round. Join again to begin.</p>}
@@ -125,7 +125,7 @@ function ShareButton({w,kind,disabled,onError}:{w:Workshop;kind:'build'|'concept
   const pending=w.publishing(kind),sent=kind==='build'?w.draft.buildSent:w.draft.sent;
   return <div className="brick-share">
     <Button disabled={disabled||pending||sent||w.blocked} onClick={()=>void w.publish(kind,true).catch(e=>onError(e.message))}>{pending?'Sending to the big screen…':sent?'Shared on the big screen':'Share on the big screen'}</Button>
-    {(pending||sent)&&<p role="status">{pending?'You can continue while Brick sends it.':'Your facilitator can show it on the wall.'}</p>}
+    {(pending||sent)&&<p role="status">{pending?'You can continue while it sends.':'Your facilitator can show it on the wall.'}</p>}
   </div>;
 }
 
@@ -247,7 +247,7 @@ function ParticipantFlow({w}:{w:Workshop}){
   const milestone=step===0?0:step<=3?1:step===4?2:step===5?3:step<=7?4:5;
   const showClock=step!==9&&s.phase>=1&&s.phase<=3;
   return <div className="brick-mobile">
-    <header className="brick-top"><strong>Brick</strong><span>{milestone+1} / {STAGE_STEPS.length} · {STAGE_STEPS[milestone]}</span><details className="session-menu"><summary aria-label="Session settings">•••</summary><div className="session-menu-panel"><p className="participant-reference">{participantLabel(participant.id)}</p><AIChoice value={a.aiTool} onChange={aiTool=>save({aiTool})} disabled={s.closed}/><label className="brick-consent"><input type="checkbox" checked={!!a.share} onChange={e=>save({share:e.target.checked})} disabled={s.closed&&!a.share}/><span>Allow sharing on the big screen</span></label><p className="small">Turning this off removes your builds and cards from the wall.</p></div></details></header>
+    <header className="brick-top"><strong>{WORKSHOP_NAME}</strong><span>{milestone+1} / {STAGE_STEPS.length} · {STAGE_STEPS[milestone]}</span><details className="session-menu"><summary aria-label="Session settings">•••</summary><div className="session-menu-panel"><p className="participant-reference">{participantLabel(participant.id)}</p><AIChoice value={a.aiTool} onChange={aiTool=>save({aiTool})} disabled={s.closed}/><label className="brick-consent"><input type="checkbox" checked={!!a.share} onChange={e=>save({share:e.target.checked})} disabled={s.closed&&!a.share}/><span>Allow sharing on the big screen</span></label><p className="small">Turning this off removes your builds and cards from the wall.</p></div></details></header>
     <main className="brick-pane" ref={pageRef}>
       <h1 tabIndex={-1}>{title}</h1>
       {showClock&&<RoundClock session={s}/>}

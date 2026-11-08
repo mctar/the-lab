@@ -1,4 +1,4 @@
-name: builders-with-taste
+name: the-lab
 services:
   db:
     image: postgres:17-bookworm
@@ -17,7 +17,7 @@ services:
     mem_limit: 1g
   api:
     build: .
-    image: builders-with-taste:${APP_VERSION:-local}
+    image: the-lab:${APP_VERSION:-local}
     restart: unless-stopped
     environment:
       DATABASE_URL: postgres://builders:${DB_PASSWORD}@db:5432/builders

@@ -1,7 +1,7 @@
 import {useEffect,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import QRCode from 'qrcode';
-import {PHASES,ROUND_MINUTES,SCALE,hasTimer,type Snapshot,type Card} from '../server/model';
+import {PHASES,ROUND_MINUTES,SCALE,WORKSHOP_NAME,hasTimer,type Snapshot,type Card} from '../server/model';
 import {API,request} from './client';
 import {media} from './media';
 import {FacilitatorTelemetry} from './telemetry';
@@ -80,7 +80,7 @@ function Staff({id,role,token}:{id:string;role:'host'|'stage';token:string}){
   const capturing=s.phase===2&&!hasTimer(s);
   const next= capturing ? {label:'Start reflection · 2 min',patch:{timer:'reset',stageView:'overview'}} : s.phase<5 ? {label:phaseActions[s.phase+1],patch:{phase:s.phase+1}} : null;
   return <div className="host-screen">
-    <header className="screen-header"><div><p className="eyebrow">Brick · Facilitator</p><h1>{s.title}</h1></div><div className="room-code"><span>Room code</span><b>{s.code}</b><span>{snapshot.total} joined</span></div></header>
+    <header className="screen-header"><div><p className="eyebrow">{WORKSHOP_NAME} · Facilitator</p><h1>{s.title}</h1></div><div className="room-code"><span>Room code</span><b>{s.code}</b><span>{snapshot.total} joined</span></div></header>
     <div className="screen-status" role="status">{error||(!connected?'Live connection interrupted · refreshing automatically':`Live · ${new Date(snapshot.capturedAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`)}</div>
     <div className="host-controls">
       <section className="control-panel host-round">

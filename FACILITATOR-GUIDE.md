@@ -1,4 +1,4 @@
-# Brick facilitator guide
+# The Lab facilitator guide
 
 ## Before people arrive
 
@@ -6,8 +6,8 @@ Open the private **facilitator link** on your laptop and the **big-screen link**
 
 ## Run the workshop
 
-1. **Join.** Ask everyone to choose their AI app and join Brick. When the room is ready, select **Open build plan**.
-2. **Get a plan.** Point to the instructions on the big screen. People photograph their loose bricks first, then send the photo and today’s prompt to their AI. If either item is missing in the AI chat, use **Send manually** on the phone. Ask everyone to return to Brick with their plan.
+1. **Join.** Ask everyone to choose their AI app and join The Lab. When the room is ready, select **Open build plan**.
+2. **Get a plan.** Point to the instructions on the big screen. People photograph their loose bricks first, then send the photo and today’s prompt to their AI. If either item is missing in the AI chat, use **Send manually** on the phone. Ask everyone to return to The Lab with their plan.
 3. **Build.** Select **Start build** for a five-minute countdown. Ask people to try the AI’s plan with the pieces they have. Select **Capture builds** when the round ends so phones ask for a photo of the actual build. People choose whether to share the photo.
 4. **Reflect.** Select **Start reflection** once people have had time for the photo. The two-minute countdown and three questions appear on the phone and big screen.
 5. **Make it yours.** Select **Start make it yours** for a ten-minute countdown. Ask everyone to return to the same AI chat and develop the idea in a direction they choose. **Stuck?** on the phone reveals a helper prompt. Select **Open concept cards** so people can name, describe, and optionally share their idea.

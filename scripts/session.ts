@@ -1,8 +1,9 @@
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { WORKSHOP_NAME } from '../server/model.js';
 const api=process.env.API_URL||'http://127.0.0.1:4181';
 const token=process.env.ADMIN_TOKEN||(await readFile('.runtime/admin-token','utf8')).trim();
-const response=await fetch(api+'/v1/sessions',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({title:process.argv[2]||'Builders with taste'})});
+const response=await fetch(api+'/v1/sessions',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({title:process.argv[2]||WORKSHOP_NAME})});
 if(!response.ok)throw new Error(await response.text());
 const session=await response.json();const base=(process.env.FRONTEND_URL||'http://127.0.0.1:5173/').replace(/\/$/,'')+'/';
 const links={id:session.id,code:session.code,title:session.title,join:base+'#/join?code='+session.code,host:base+'#/host/'+session.id+'?access='+session.hostToken,stage:base+'#/stage/'+session.id+'?access='+session.stageToken};

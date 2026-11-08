@@ -1,4 +1,5 @@
 import { z } from 'zod';
+export const WORKSHOP_NAME = 'The Lab';
 export const PHASES = ['Get a build plan', 'Build', 'Capture & reflect', 'Make it yours', 'Concept card', 'Final reflection'];
 export const ROUND_MINUTES: Readonly<Partial<Record<number, number>>> = {1:5, 2:2, 3:10};
 export const INSTRUCTION_EASE = ['Easy', 'Some parts were hard', 'Hard'] as const;
