@@ -7,7 +7,7 @@ export const SCALE = [['Magic button', 'I hand it over'], ['Centaur', 'We split 
 export const AI_TOOLS = ['ChatGPT', 'Gemini', 'Claude', 'Copilot', 'Something else'] as const;
 export const TWISTS = ['for people who have never met', "for people who don’t share a language", 'that only works at night', 'for people who disagree', 'that works without electricity', 'for a city 100 years from now', 'that fits in a pocket', 'for strangers on a train', 'for one minute a day', 'for people of all ages at once', 'that moves', 'that makes a sound', 'in the middle of a forest', 'for a rainy Monday morning', 'for people waiting in line', 'that grows over time', 'for neighbours who never talk', 'for a place where everyone is in a hurry'];
 export const CARD_PHASE = [-1, 0, 0, 0, 1, 2, 3, 4, 5, 5];
-export const FLOW_STEPS = ['Joined', 'Opening question', 'Loose-brick photo', 'Get a build plan', 'Build', 'Capture & reflect', 'Make it yours', 'Concept card', 'Final reflection', 'Finished'];
+export const FLOW_STEPS = ['Joined', 'Opening question', 'Photograph loose pieces', 'Get a build plan', 'Build', 'Capture & reflect', 'Make it yours', 'Concept card', 'Final reflection', 'Finished'];
 export const participantLabel = (id:string) => 'Builder '+id.slice(0,8).toUpperCase();
 export const activityInput = z.object({
   step:z.number().int().min(0).max(9),

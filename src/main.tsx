@@ -100,7 +100,7 @@ function Staff({id,role,token}:{id:string;role:'host'|'stage';token:string}){
     </div>
     <ResetSession session={s} participants={snapshot.total} cards={cards.length} token={token} onReset={refresh}/>
     <FacilitatorTelemetry key={s.run} snapshot={snapshot}/>
-    <div className="join-banner"><QR url={joinUrl}/><div><h2>Join the workshop</h2><a href={joinUrl}>{joinUrl}</a><p>Share this link or show the QR on the big screen.</p></div></div>
+    <div className="join-banner"><QR url={joinUrl}/><div><h2>Join the workshop</h2><a href={joinUrl}>Participant join link</a><p>Share this link or show the QR on the big screen.</p></div></div>
     <div className="results">{snapshot.before.some(Boolean)&&<Distribution label="Opening question" counts={snapshot.before} total={snapshot.total} color="#26a7eb"/>}<Distribution label="Closing question" counts={snapshot.after} total={snapshot.total} color="#00ce62"/>{snapshot.paired>0&&<PairedResults snapshot={snapshot}/>}</div>
     <div className="reflection-results">{[['How easy was it to follow the AI’s instructions?',snapshot.instructionEase||{}],['Did the plan work?',snapshot.works],['How did it feel?',snapshot.feel]].filter(([,data])=>Object.keys(data).length).map(([title,data])=><section key={title as string}><h2>{title as string}</h2>{Object.entries(data as Record<string,number>).map(([label,n])=><div className="result-row" key={label}><span>{label}</span><meter min={0} max={Math.max(snapshot.total,1)} value={n}/><b>{n}</b></div>)}</section>)}</div>
     <section className="wall-section"><div className="distribution-head"><h2>{s.galleryPaused?'The gallery is paused':'On the wall'}</h2><span>{cards.length} shared builds and cards</span></div>

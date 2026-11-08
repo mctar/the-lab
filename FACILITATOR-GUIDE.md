@@ -2,7 +2,7 @@
 
 ## Before people arrive
 
-Open the private **facilitator link** on your laptop and the **big-screen link** on the projection computer. Select **Full screen** on the projection computer. Leave it in the lobby so the room can scan the QR and see the live join count. Participants can also enter the room code at [brick.btrbot.com](https://brick.btrbot.com/).
+Open the private **facilitator link** on your laptop and the **big-screen link** on the projection computer. Select **Full screen** on the projection computer. Leave it in the lobby so the room can scan the QR and see the live join count. Participants can also enter the room code at [The Lab](https://brick.btrbot.com/).
 
 ## Run the workshop
 
