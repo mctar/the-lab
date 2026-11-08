@@ -1,12 +1,22 @@
-# Builders with taste
+# Builders with Taste
 
 A mobile workshop app with facilitator-controlled phases and a live projection screen. Frontend: React/TypeScript on GitHub Pages. Backend: Fastify, PostgreSQL, and private image storage on Hugin.
 
-Participants join with a session code, choose ChatGPT, Gemini, Claude, Copilot, or Something else on the welcome screen, and complete the original nine-card exercise in their own AI app. The choice is saved with their answers and can be changed in the session menu. The facilitator sees the AI breakdown and each participant’s choice; it is included in the export. Structured answers contribute to room results. Build photos and submitted concept cards appear immediately only with permission. Private notes and the brick-pile photo remain on the phone. The host can pause the gallery, hide cards, control phases/timers, and export results.
+Running a workshop? See the [Brick facilitator guide](FACILITATOR-GUIDE.md).
+
+Participants scan the lobby QR, choose their AI app, and join on one screen. They photograph their loose bricks, send the photo and shared brief to their own AI, and try its plan. The facilitator opens a separate build-photo step before reflection. Participants then develop the idea in the same AI chat and can share a short concept card. Opening and closing votes are optional. Written reflection notes and loose-brick photos stay on the phone. The stage shows shared builds, room totals, and aggregate responses.
 
 The facilitator dashboard shows counts at all ten participant screens, connected/waiting/finished totals, and a searchable anonymous participant roster with current screen, time there, last activity, queued saves, and checkpoints. Phones report minimal activity metadata about every 25–30 seconds and after screen/save changes. They show a matching Builder reference for troubleshooting. Host-only reports contain photo-readiness flags, never private photo contents or private reflection text. Background activity is labelled separately; long build/development steps alone are not treated as errors. Older open clients show their last saved screen until refreshed. The public projection API does not expose the roster.
 
 Every photo control has separate **Take a photo** and **Choose from camera roll** options, including when replacing a picture. The camera control requests the rear camera; the library control leaves the operating system's image picker available. Both paths use the same compression, private draft storage, and display consent rules.
+
+## Working in Codex
+
+Open this repository as a local Codex project. On the workshop Mac it is saved as **The Build**. [AGENTS.md](AGENTS.md) gives new chats the workshop rules, code map, and production boundaries. Keep this README as the reference for running the app and rehearsing a session.
+
+For a new worktree, use Node 24 and `npm ci` for setup. Start the API and web app in separate terminals using the commands below. Both use fixed local ports, so stop them before starting the app from another checkout. Each checkout gets its own `.runtime/` directory and local rooms.
+
+To add desktop shortcuts, open the project's local environment settings. Use `npm ci` for worktree setup and add actions for **Start API** (`npm run dev:api`), **Start web app** (`npm run dev`), and **Verify** (`npm test && npm run build`). [Codex local environments](https://learn.chatgpt.com/docs/environments/local-environment)
 
 ## Local development
 
@@ -69,9 +79,15 @@ Backend releases are controlled separately. Copy reviewed source to Hugin, set a
 
 ## Big-screen scenes
 
-The facilitator selects overview, results, gallery, or reflections. Votes land as coloured bricks (one per answer); results show animated paths using only people with both before and after answers. The gallery rotates a build into the spotlight every 11 seconds and celebrates newly shared contributions. Pausing the gallery removes its images from the screen immediately.
+The **Instructions** view shows the current audience cue in large type. The lobby shows the QR and live join count. Every phase change returns to instructions. The facilitator can switch to **Results**, **Gallery**, or **Responses** while the current phase and timer remain visible. Build starts at five minutes, reflection at two minutes after the build-photo cue, and concept development at ten minutes. Phones and the projector read the same server deadline. The facilitator can pause, resume, extend, and advance the room.
 
-The join QR stays on screen. Click it or press **J** for a large reveal; **Escape** closes it. **M** toggles decorative motion, and the screen respects the operating system's reduced-motion setting. Use the full-screen button for projection. Rehearsal sessions are visibly marked **DRY RUN**.
+Votes land as coloured bricks. The results view shows paths for matched opening and closing answers. Shared builds appear as they arrive and rotate through the spotlight. Pausing the gallery removes its images from the stage. Press **J** to enlarge the QR, **Escape** to dismiss it, or **M** to toggle decorative motion. Rehearsals are marked **DRY RUN**.
+
+## Running a rehearsal
+
+Use the [facilitator guide](FACILITATOR-GUIDE.md) for the room sequence. On the workshop Mac, the deployed rehearsal links are in `.runtime/dry-run-access.json` and the original event links are in `.runtime/session-access.json`. Locally provisioned rooms use `.runtime/session-<code>.json`. Use the full staff links in a fresh browser. Display only the participant QR or join link to the audience.
+
+Check all three views together in a disposable room. Try the phone’s camera and camera-roll options, send the photo and prompt to an AI app, and check the manual path when the share sheet drops an item. Check the countdown on both screens, capture a build before starting reflection, and verify that only opted-in work appears. Check that the stage cues are readable from the back row. Use the confirmed reset below for another clean pass.
 
 ## Resetting a rehearsal
 

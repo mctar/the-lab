@@ -1,7 +1,8 @@
 import React,{useEffect,useRef,useState,type CSSProperties} from 'react';
-import {PHASES,SCALE,type Card,type Snapshot,type Session} from '../server/model';
-import {media} from './media';
-import {pairedMovement,stageHeading} from './stage-data';
+import {INSTRUCTION_EASE,SCALE,hasTimer,type Card,type Snapshot} from '../server/model';
+import {pairedMovement} from './stage-data';
+import {RoundClock} from './round-clock';
+import {stageCue,STAGE_STEPS,WORKSHOP_BRIEF} from './workshop-flow';
 import './stage.css';
 
 const COLORS=['#f48bce','#83c9ff','#b4ee6b'];
@@ -16,20 +17,6 @@ function useMotion(){
   const [reduced,setReduced]=useState(()=>matchMedia('(prefers-reduced-motion: reduce)').matches),[paused,setPaused]=useState(false);
   useEffect(()=>{const query=matchMedia('(prefers-reduced-motion: reduce)'),change=()=>setReduced(query.matches);query.addEventListener('change',change);return()=>query.removeEventListener('change',change);},[]);
   return {enabled:!reduced&&!paused,paused:reduced||paused,forced:reduced,toggle:()=>setPaused(v=>!v)};
-}
-function StageClock({session}:{session:Session}){
-  const [now,setNow]=useState(Date.now());const anchor=useRef({server:session.serverTime,at:Date.now()});
-  if(anchor.current.server!==session.serverTime)anchor.current={server:session.serverTime,at:Date.now()};
-  useEffect(()=>{const interval=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(interval);},[]);
-  const serverNow=Date.parse(anchor.current.server)+Math.max(0,now-anchor.current.at);
-  const remaining=session.endsAt?Math.max(0,Date.parse(session.endsAt)-serverNow):session.remainingMs;
-  if(remaining===null)return null;
-  const seconds=Math.ceil(remaining/1000),maximum=session.phase===1?420000:480000;
-  return <div className={'play-clock'+(remaining<=60000?' almost':'')} style={styleVars({'--clock-fill':`${100*Math.min(1,remaining/maximum)}%`})}>
-    <span className="play-clock-label">{session.remainingMs!==null?'PAUSED':seconds===0?'WRAP IT UP':'TIME TO MAKE'}</span>
-    <strong>{Math.floor(seconds/60)}<span>:</span>{String(seconds%60).padStart(2,'0')}</strong>
-    <div className="play-clock-track"><i/></div>
-  </div>;
 }
 function Count({value}:{value:number}){return <span className="play-count" key={value}>{value}</span>;}
 
@@ -54,7 +41,10 @@ function VoteBoard({counts,total,label,compact=false}:{counts:number[];total:num
 
 function Movement({snapshot,motion}:{snapshot:Snapshot;motion:boolean}){
   const {before,after,total,moved,stayed}=pairedMovement(snapshot.transitions);
-  if(!total)return <div className="unpaired-results"><VoteBoard counts={snapshot.before} total={snapshot.total} label="At the start"/><div className="waiting-reveal"><Brick color={COLORS[2]}/><h2>The next move<br/>is still being made.</h2><p>Before-and-after paths appear when people answer both questions.</p></div></div>;
+  if(!total){
+    const hasBefore=snapshot.before.some(Boolean),hasAfter=snapshot.after.some(Boolean);
+    return <div className="unpaired-results">{(hasBefore||!hasAfter)&&<VoteBoard counts={snapshot.before} total={snapshot.total} label="Opening question"/>}{hasAfter&&<VoteBoard counts={snapshot.after} total={snapshot.total} label="Closing question"/>}{!hasAfter&&<div className="waiting-reveal"><Brick color={COLORS[2]}/><h2>Closing votes will appear here</h2><p>The opening and closing questions are optional.</p></div>}</div>;
+  }
   const ys=[75,235,395];
   return <section className="movement-view" aria-label={`${total} paired answers; ${moved} changed category and ${stayed} stayed in the same category`}>
     <div className="movement-top"><span>AT THE START</span><div><b>{moved}</b> moved <span>·</span> <b>{stayed}</b> stayed</div><span>JUST NOW</span></div>
@@ -100,30 +90,44 @@ function Gallery({snapshot,photo}:{snapshot:Snapshot;photo:StageProps['photo']})
 }
 
 function Reflections({snapshot}:{snapshot:Snapshot}){
-  const groups=[{title:'Did the plan work?',counts:snapshot.works,labels:['Yes','Partly','No']},{title:'How did following it feel?',counts:snapshot.feel,labels:['Easy','Mixed','Uncomfortable']}];
+  const ease=snapshot.instructionEase||{};
+  const legacy=[{title:'Did the plan work?',counts:snapshot.works,labels:['Yes','Partly','No']},{title:'How did following it feel?',counts:snapshot.feel,labels:['Easy','Mixed','Uncomfortable']}];
+  const groups=Object.keys(ease).length||legacy.every(group=>!Object.keys(group.counts).length)?[{title:'How easy was it to follow the AI’s instructions?',counts:ease,labels:INSTRUCTION_EASE}]:legacy;
   return <div className="play-reflections">{groups.map((group,g)=><section key={group.title}><p className="play-eyebrow">{g===0?'THE PLAN MET THE BRICKS':'THE HUMAN PART'}</p><h2>{group.title}</h2><div className="reflection-stacks">{group.labels.map((label,i)=>{const n=group.counts[label]||0,maximum=Math.max(1,...Object.values(group.counts));return <div className="reflection-choice" key={label} style={styleVars({'--reflection-color':COLORS[i]})}><div className="reflection-bar"><i style={{height:`${n/maximum*100}%`}}>{Array.from({length:4},(_,j)=><span key={j}/>)}</i><strong><Count value={n}/></strong></div><h3>{label}</h3></div>;})}</div><p className="reflection-total">{Object.values(group.counts).reduce((a,b)=>a+b,0)} / {snapshot.total} answered</p></section>)}</div>;
 }
 
 export function StageScreen({snapshot,connected,error,qr,joinUrl,photo}:StageProps){
-  const s=snapshot.session,view=s.stageView,lobby=s.phase<0,{enabled:motion,paused:motionPaused,forced:reducedMotion,toggle}=useMotion(),[joinOpen,setJoinOpen]=useState(false);
+  const s=snapshot.session,cue=stageCue(s),view=s.stageView,lobby=s.phase<0&&!s.closed;
+  const {enabled:motion,paused:motionPaused,forced:reducedMotion,toggle}=useMotion();
+  const [joinOpen,setJoinOpen]=useState(false);
   const previousTotal=useRef(snapshot.total),[joinBurst,setJoinBurst]=useState(false);
   useEffect(()=>{if(snapshot.total>previousTotal.current){setJoinBurst(true);const timer=setTimeout(()=>setJoinBurst(false),4000);previousTotal.current=snapshot.total;return()=>clearTimeout(timer);}previousTotal.current=snapshot.total;},[snapshot.total]);
   useEffect(()=>{const key=(e:KeyboardEvent)=>{if(e.ctrlKey||e.metaKey||e.altKey||e.repeat||e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement)return;if(e.key.toLowerCase()==='m')toggle();if(e.key.toLowerCase()==='j')setJoinOpen(v=>!v);if(e.key==='Escape')setJoinOpen(false);};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[]);
-  const answeredAfter=snapshot.after.reduce((a,b)=>a+b,0),showAfter=s.phase===5&&answeredAfter>0,headline=stageHeading(view,s.phase,snapshot.paired),rehearsal=/dry run|rehearsal|visual qa|load test/i.test(s.title);
+  const rehearsal=/dry run|rehearsal|visual qa|load test/i.test(s.title);
+  const showSpotlight=!s.galleryPaused&&snapshot.gallery.length>0;
+  const timed=hasTimer(s)&&!s.closed;
   return <div className={`play-stage stage-scene-${lobby?'lobby':view}`} data-motion={motion?'on':'off'}>
     <div className="play-background" aria-hidden="true"><Brick color={COLORS[0]}/><Brick color={COLORS[1]}/><Brick color={COLORS[2]}/></div>
-    <header className="play-header"><div className="play-brand"><span className="brand-brick"><i/><i/></span><b>BUILDERS WITH TASTE</b><span className="brand-divider"/><span>GERVI LABS</span>{rehearsal&&<span className="rehearsal-tag">DRY RUN</span>}</div><div className={'play-live'+(!connected||error?' reconnecting':'')} role="status"><i/>{connected&&!error?'LIVE':'RECONNECTING'}</div></header>
-    <div className="play-title-row"><h1>{headline}</h1><div className={'room-counter'+(joinBurst?' new-builder':'')}><strong><Count value={snapshot.total}/></strong><span>{joinBurst?'JUST GOT BIGGER':'BUILDERS IN THE ROOM'}</span></div></div>
+    <header className="play-header"><div className="play-brand"><span className="brand-brick"><i/><i/></span><b>BRICK</b><span className="brand-divider"/><span>BUILDERS WITH TASTE</span>{rehearsal&&<span className="rehearsal-tag">DRY RUN</span>}</div><div className={'play-live'+(!connected||error?' reconnecting':'')} role="status"><i/>{connected&&!error?'LIVE':'RECONNECTING'}</div></header>
+    <div className="play-title-row cue-title-row">
+      <div><p className="cue-kicker">{s.closed?'Workshop complete':`${cue.step+1} / ${STAGE_STEPS.length} · ${STAGE_STEPS[cue.step]}`}</p><h1>{cue.title}</h1>{!lobby&&view!=='overview'&&<p className="cue-reminder">{cue.steps[0]}</p>}</div>
+      {!lobby&&view!=='overview'&&<RoundClock session={s} compact/>}
+    </div>
     <main className="play-content">
-      {lobby?<div className="play-welcome"><div className="welcome-words"><p className="play-eyebrow">BRING YOUR CURIOSITY. WE’LL BRING THE TWIST.</p><h2>Your bricks.<br/>Your AI.<br/><em>Your call.</em></h2><img src={media.welcomeDark} alt="Colourful LEGO bricks spilling from a bag"/></div><div className="welcome-join"><div className="join-code-label">SCAN YOUR WAY IN</div><a href={joinUrl} className="large-join-qr">{qr}</a><p>or enter the code</p><strong>{s.code}</strong><span>No sign-up. Just jump in.</span></div></div>:
-        view==='results'?<Movement snapshot={snapshot} motion={motion}/>:
+      {lobby?<div className="stage-join">
+        <div className="stage-join-copy"><h2>Scan with your phone</h2><p>Have your loose bricks and your AI app ready.</p><div className={'room-counter'+(joinBurst?' new-builder':'')}><strong><Count value={snapshot.total}/></strong><span>JOINED THE WORKSHOP</span></div></div>
+        <div className="welcome-join"><a href={joinUrl} className="large-join-qr">{qr}</a><p>Or enter this room code</p><strong>{s.code}</strong></div>
+      </div>:view==='results'?<Movement snapshot={snapshot} motion={motion}/>:
         view==='gallery'?<Gallery snapshot={snapshot} photo={photo}/>:
         view==='reflections'?<Reflections snapshot={snapshot}/>:
-        <div className="play-overview"><div className="overview-left"><VoteBoard counts={showAfter?snapshot.after:snapshot.before} total={snapshot.total} label={showAfter?'Just now':'At the start'} compact/><StageClock session={s}/>{s.phase===5&&snapshot.paired>0&&<div className="paired-note"><b>{pairedMovement(snapshot.transitions).moved}</b><span>of {snapshot.paired} paired answers<br/>landed in a different category.</span></div>}</div><Spotlight cards={snapshot.gallery} paused={s.galleryPaused} photo={photo}/></div>}
+        <div className={'cue-board'+(timed||showSpotlight?' has-side':'')}>
+          <div className="cue-main"><ol>{cue.steps.map(line=><li key={line}>{line}</li>)}</ol>{s.phase===0&&!s.closed&&<div className="cue-brief"><span>Today’s brief</span><strong>{WORKSHOP_BRIEF}</strong></div>}</div>
+          {(timed||showSpotlight)&&<div className="cue-side"><RoundClock session={s}/>{showSpotlight&&<Spotlight cards={snapshot.gallery} paused={false} photo={photo}/>}</div>}
+        </div>}
     </main>
-    <footer className="play-footer"><div className="phase-trail" aria-label="Session progress">{PHASES.map((label,i)=><span key={i} className={s.phase===i?'current':s.phase>i?'past':''}><i>{i+1}</i><b>{label}</b></span>)}</div><div className="play-footer-actions"><button onClick={toggle} aria-pressed={motionPaused} disabled={reducedMotion}>{reducedMotion?'Reduced motion':motionPaused?'▶ Motion':'Ⅱ Motion'}</button><button onClick={()=>document.documentElement.requestFullscreen?.()}>⛶ Full screen</button><span className="stage-updated">Updated {new Date(snapshot.capturedAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</span></div></footer>
-    {!lobby&&<button className="play-join-tab" onClick={()=>setJoinOpen(true)} aria-label="Show the join QR code">{qr}<span>JUMP IN<strong>{s.code}</strong></span></button>}
+    <footer className="play-footer"><div className="phase-trail" aria-label="Session progress">{STAGE_STEPS.map((label,i)=><span key={label} className={cue.step===i?'current':cue.step>i?'past':''}><i>{i+1}</i><b>{label}</b></span>)}</div><div className="play-footer-actions"><button onClick={toggle} aria-pressed={motionPaused} disabled={reducedMotion}>{reducedMotion?'Reduced motion':motionPaused?'▶ Motion':'Ⅱ Motion'}</button><button onClick={()=>document.documentElement.requestFullscreen?.()}>⛶ Full screen</button><span className="stage-updated">Updated {new Date(snapshot.capturedAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</span></div></footer>
+    {!lobby&&!s.closed&&<button className="play-join-tab" onClick={()=>setJoinOpen(true)} aria-label="Show the join QR code">{qr}<span>JOIN<strong>{s.code}</strong></span></button>}
     {error&&<p className="play-connection-note" role="status">{error} · Showing the last saved room picture.</p>}
-    {joinOpen&&<div className="play-join-overlay" role="dialog" aria-modal="true" aria-label="Join the session"><button className="join-overlay-close" onClick={()=>setJoinOpen(false)} aria-label="Close join code">×</button><p className="play-eyebrow">THERE’S ROOM FOR YOUR IDEA.</p><h2>Come build with us.</h2><a href={joinUrl}>{qr}</a><strong>{s.code}</strong><span>Scan the code or enter it on your phone.</span></div>}
+    {joinOpen&&!s.closed&&<div className="play-join-overlay" role="dialog" aria-modal="true" aria-label="Join the session"><button className="join-overlay-close" onClick={()=>setJoinOpen(false)} aria-label="Close join code">×</button><p className="play-eyebrow">BRICK · BUILDERS WITH TASTE</p><h2>Join the workshop</h2><a href={joinUrl}>{qr}</a><strong>{s.code}</strong><span>Scan the QR or enter the code on your phone.</span></div>}
   </div>;
 }

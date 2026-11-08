@@ -58,7 +58,7 @@ test('session lifecycle: ownership, phase gates, idempotency, gallery consent, h
     assert.equal((await call('POST',root+'/cards',a.token,{...card,operationId:randomUUID(),expectedRevision:4})).status,403);
     const replay=await call('POST',root+'/cards',a.token,card);assert.equal(replay.status,200);assert.equal((await call('GET',root+'/snapshot',stageToken)).data.gallery.length,0);
     await call('PATCH',root+'/control',hostToken,{expectedRevision:4,phase:1});
-    const paused=(await call('PATCH',root+'/control',hostToken,{expectedRevision:5,timer:'pause'})).data;assert.equal(paused.endsAt,null);assert.ok(paused.remainingMs>410000);
+    const paused=(await call('PATCH',root+'/control',hostToken,{expectedRevision:5,timer:'pause'})).data;assert.equal(paused.endsAt,null);assert.ok(paused.remainingMs>290000&&paused.remainingMs<=300000);
     const resumed=(await call('PATCH',root+'/control',hostToken,{expectedRevision:6,timer:'resume'})).data;assert.ok(resumed.endsAt);assert.equal(resumed.remainingMs,null);
     const cors=await app.inject({method:'OPTIONS',url:root,headers:{origin:'http://localhost:5173','access-control-request-method':'GET','access-control-request-headers':'authorization'}});assert.equal(cors.headers['access-control-allow-origin'],'http://localhost:5173');
     await call('PATCH',root+'/control',hostToken,{expectedRevision:7,closed:true});

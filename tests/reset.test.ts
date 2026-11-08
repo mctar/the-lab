@@ -29,7 +29,7 @@ test('confirmed reset isolates the previous run, rejects stale writes, preserves
     const card={operationId:randomUUID(),expectedRevision:1,consentVersion:1,kind:'concept',title:'Old idea',description:'Old description',mine:'Old decision',assetId};
     assert.equal((await call('POST',root+'/cards',p.token,card)).status,200);
     await call('POST',root+'/telemetry',p.token,{step:9,visibility:'visible',pendingSaves:2,syncStatus:'queued',waitingForPhase:null,photos:{pile:true,build:true,concept:true},handedOff:true,cardReady:true});
-    await call('PATCH',root+'/control',s.hostToken,{expectedRevision:1,timer:'reset',galleryPaused:true,stageView:'gallery'});
+    await call('PATCH',root+'/control',s.hostToken,{expectedRevision:1,phase:3,galleryPaused:true,stageView:'gallery'});
     await call('PATCH',root+'/control',s.hostToken,{expectedRevision:2,timer:'pause',closed:true});
     const reset={operationId:randomUUID(),expectedRevision:3,confirmation:s.code};
     assert.equal((await call('POST',root+'/reset',s.stageToken,reset)).status,401);

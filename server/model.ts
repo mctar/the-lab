@@ -1,10 +1,12 @@
 import { z } from 'zod';
-export const PHASES = ['Get ready', 'Build', 'Reflect', 'Make it yours', 'Your card', 'Reflect again'];
+export const PHASES = ['Get a build plan', 'Build', 'Capture & reflect', 'Make it yours', 'Concept card', 'Final reflection'];
+export const ROUND_MINUTES: Readonly<Partial<Record<number, number>>> = {1:5, 2:2, 3:10};
+export const INSTRUCTION_EASE = ['Easy', 'Some parts were hard', 'Hard'] as const;
 export const SCALE = [['Magic button', 'I hand it over'], ['Centaur', 'We split the work'], ['Cyborg', 'We think as one']];
 export const AI_TOOLS = ['ChatGPT', 'Gemini', 'Claude', 'Copilot', 'Something else'] as const;
 export const TWISTS = ['for people who have never met', "for people who don’t share a language", 'that only works at night', 'for people who disagree', 'that works without electricity', 'for a city 100 years from now', 'that fits in a pocket', 'for strangers on a train', 'for one minute a day', 'for people of all ages at once', 'that moves', 'that makes a sound', 'in the middle of a forest', 'for a rainy Monday morning', 'for people waiting in line', 'that grows over time', 'for neighbours who never talk', 'for a place where everyone is in a hurry'];
-export const CARD_PHASE = [-1, 0, 1, 1, 1, 2, 3, 4, 5, 5];
-export const FLOW_STEPS = ['Welcome', 'Before question', 'Brick photo', 'AI instructions', 'Build', 'Reflection', 'Develop the idea', 'Concept card', 'After question', 'Finished'];
+export const CARD_PHASE = [-1, 0, 0, 0, 1, 2, 3, 4, 5, 5];
+export const FLOW_STEPS = ['Joined', 'Opening question', 'Loose-brick photo', 'Get a build plan', 'Build', 'Capture & reflect', 'Make it yours', 'Concept card', 'Final reflection', 'Finished'];
 export const participantLabel = (id:string) => 'Builder '+id.slice(0,8).toUpperCase();
 export const activityInput = z.object({
   step:z.number().int().min(0).max(9),
@@ -30,6 +32,7 @@ export const answerPatch = z.object({
   aiTool: z.enum(AI_TOOLS).optional(),
   before: z.number().int().min(0).max(2).optional(), after: z.number().int().min(0).max(2).optional(),
   works: z.enum(['Yes', 'Partly', 'No']).optional(), feel: z.enum(['Easy', 'Mixed', 'Uncomfortable']).optional(),
+  instructionEase: z.enum(INSTRUCTION_EASE).optional(),
   share: z.boolean().optional(), progress: z.number().int().min(0).max(9).optional(),
   twist: z.enum(TWISTS as [string, ...string[]]).optional()
 }).strict();
@@ -43,6 +46,7 @@ export const cardInput = z.object({
 }).strict();
 export type Answers = z.infer<typeof answerPatch>;
 export type Session = { id: string; code: string; title: string; run:number; phase: number; revision: number; closed: boolean; galleryPaused: boolean; stageView: string; endsAt: string | null; remainingMs: number | null; serverTime: string };
+export const hasTimer = (session: Pick<Session, 'endsAt'|'remainingMs'>) => session.endsAt !== null || session.remainingMs !== null;
 export type Participant = { id: string; revision: number; consentVersion: number; data: Answers };
 export type Card = { id: string; kind: string; title: string; description: string; mine: string; assetId: string | null; hidden: boolean; updatedAt: string; twist: string };
-export type Snapshot = { session: Session; total: number; before: number[]; after: number[]; paired: number; transitions: number[][]; works: Record<string, number>; feel: Record<string, number>; progress: number[]; gallery: Card[]; capturedAt: string; telemetry?:HostTelemetry };
+export type Snapshot = { session: Session; total: number; before: number[]; after: number[]; paired: number; transitions: number[][]; works: Record<string, number>; feel: Record<string, number>; instructionEase?: Record<string, number>; progress: number[]; gallery: Card[]; capturedAt: string; telemetry?:HostTelemetry };

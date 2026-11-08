@@ -9,7 +9,7 @@ import sharp from 'sharp';
 import { z, ZodError } from 'zod';
 import type { ServerResponse, OutgoingHttpHeaders } from 'node:http';
 import { database, type Database, type Query, type Row } from './db.js';
-import { mutation, cardInput, activityInput, resetInput, CARD_PHASE, TWISTS, type Session, type Participant, type Snapshot, type Card } from './model.js';
+import { mutation, cardInput, activityInput, resetInput, answerPatch, CARD_PHASE, ROUND_MINUTES, TWISTS, type Session, type Participant, type Snapshot, type Card } from './model.js';
 import { hostTelemetry } from './activity.js';
 
 const hash = (s: string) => createHash('sha256').update(s).digest('hex');
@@ -82,12 +82,13 @@ export async function createApp(opts: Options) {
   app.post('/v1/join',async(req)=>{
     // A venue NAT can carry every participant. Admission budget accommodates the whole room.
     limit('join:'+req.ip,1500);
-    const b=z.object({code:z.string().trim().min(6).max(12),joinKey:z.uuid()}).strict().parse(req.body);
+    const b=answerPatch.pick({aiTool:true,share:true,before:true}).extend({code:z.string().trim().min(6).max(12),joinKey:z.uuid()}).strict().parse(req.body);
     const joined=await db.transaction(async q=>{
       const [s]=await q('SELECT * FROM sessions WHERE code=$1 FOR SHARE',[b.code.toUpperCase()]);
       if(!s || s.closed) fail(404,'That session is unavailable. Check the code with your facilitator.');
       const j=hash(s.run===0?s.id+b.joinKey:s.id+':'+s.run+':'+b.joinKey), token=createHmac('sha256',opts.adminToken).update(j).digest('base64url');
-      const [p]=await q('INSERT INTO participants(id,session_id,join_hash,data,run) VALUES($1,$2,$3,$4,$5) ON CONFLICT(join_hash) DO UPDATE SET join_hash=EXCLUDED.join_hash RETURNING *',[randomUUID(),s.id,j,JSON.stringify({share:false,progress:0,twist:TWISTS[Math.floor(Math.random()*TWISTS.length)]}),s.run]);
+      const data={share:b.share??false,aiTool:b.aiTool,before:b.before,progress:0,twist:TWISTS[Math.floor(Math.random()*TWISTS.length)]};
+      const [p]=await q('INSERT INTO participants(id,session_id,join_hash,data,run) VALUES($1,$2,$3,$4,$5) ON CONFLICT(join_hash) DO UPDATE SET join_hash=EXCLUDED.join_hash RETURNING *',[randomUUID(),s.id,j,JSON.stringify(data),s.run]);
       await q("INSERT INTO credentials(hash,session_id,participant_id,role,expires_at) VALUES($1,$2,$3,'participant',now()+interval '2 days') ON CONFLICT(hash) DO NOTHING",[hash(token),s.id,p.id]);
       return {session:sessionView(s),participant:personView(p),token};
     });notify(joined.session.id);return joined;
@@ -111,7 +112,7 @@ export async function createApp(opts: Options) {
       return writeOp(q,p.id,b.operationId,b,async()=>{
         if(s.closed && !(Object.keys(b.patch).length===1 && b.patch.share===false)) fail(409,'The session has closed. Your draft is still on this phone.');
         if(p.revision!==b.expectedRevision) fail(409,'Your answers changed in another tab. Reload before continuing.');
-        for(const [k,v] of Object.entries(b.patch)) {const phase=k==='before'?0:k==='after'?5:['works','feel'].includes(k)?2:k==='twist'?1:k==='progress'?CARD_PHASE[v as number]:-1;if(phase>s.phase) fail(403,'Your facilitator has not opened this phase yet.');}
+        for(const [k,v] of Object.entries(b.patch)) {const phase=k==='before'?0:k==='after'?5:['works','feel','instructionEase'].includes(k)?2:k==='twist'?1:k==='progress'?CARD_PHASE[v as number]:-1;if(phase>s.phase) fail(403,'Your facilitator has not opened this phase yet.');}
         const data={...p.data,...b.patch}, changed=b.patch.share!==undefined && p.data.share!==b.patch.share;
         const [out]=await q('UPDATE participants SET data=$1,revision=revision+1,consent_version=consent_version+$2 WHERE id=$3 RETURNING *',[JSON.stringify(data),changed?1:0,p.id]);
         if(changed && !data.share) await q('DELETE FROM submissions WHERE participant_id=$1',[p.id]);
@@ -153,7 +154,7 @@ export async function createApp(opts: Options) {
         if(s.closed || s.phase<(b.kind==='build'?2:4)) fail(403,'This phase is not open.');
         if(p.revision!==b.expectedRevision) fail(409,'Your answers changed. Reload before submitting.');
         if(!p.data.share || p.consent_version!==b.consentVersion) fail(403,'Sharing permission changed. Submit again with your current choice.');
-        if(b.kind==='concept' && (!b.title || !b.description || !b.mine)) fail(400,'Add a title, description, and the part you decided.');
+        if(b.kind==='concept' && (!b.title || !b.description)) fail(400,'Add a title and a short description.');
         if(b.kind==='build' && !b.assetId) fail(400,'Add a build photo first.');
         if(b.assetId) {const [a]=await q('SELECT * FROM assets WHERE id=$1 AND participant_id=$2 AND session_id=$3 AND consent_version=$4',[b.assetId,p.id,id,b.consentVersion]);if(!a) fail(403,'This photo is unavailable. Upload it again.');}
         const [card]=await q('INSERT INTO submissions(id,session_id,participant_id,kind,title,description,mine,asset_id,consent_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(participant_id,kind) DO UPDATE SET title=EXCLUDED.title,description=EXCLUDED.description,mine=EXCLUDED.mine,asset_id=EXCLUDED.asset_id,consent_version=EXCLUDED.consent_version,updated_at=now() RETURNING id',[randomUUID(),id,p.id,b.kind,b.title,b.description,b.mine,b.assetId,b.consentVersion]);return {id:card.id};
@@ -173,12 +174,12 @@ export async function createApp(opts: Options) {
     return db.transaction(async q=>{
       const [s]=await q('SELECT * FROM sessions WHERE id=$1 FOR SHARE',[id]);if(!s)fail(404,'Session not found.');
       const people=await q('SELECT * FROM participants WHERE session_id=$1 AND run=$2 ORDER BY created_at,id',[id,s.run]);
-      const before=[0,0,0],after=[0,0,0],transitions=[[0,0,0],[0,0,0],[0,0,0]],progress=Array(10).fill(0),works:Record<string,number>={},feel:Record<string,number>={};let paired=0;
-      for(const {data:d} of people) {if(d.before!=null) before[d.before]++;if(d.after!=null) after[d.after]++;if(d.before!=null && d.after!=null) {paired++;transitions[d.before][d.after]++;}progress[d.progress||0]++;if(d.works) works[d.works]=(works[d.works]||0)+1;if(d.feel) feel[d.feel]=(feel[d.feel]||0)+1;}
+      const before=[0,0,0],after=[0,0,0],transitions=[[0,0,0],[0,0,0],[0,0,0]],progress=Array(10).fill(0),works:Record<string,number>={},feel:Record<string,number>={},instructionEase:Record<string,number>={};let paired=0;
+      for(const {data:d} of people) {if(d.before!=null) before[d.before]++;if(d.after!=null) after[d.after]++;if(d.before!=null && d.after!=null) {paired++;transitions[d.before][d.after]++;}progress[d.progress||0]++;if(d.works) works[d.works]=(works[d.works]||0)+1;if(d.feel) feel[d.feel]=(feel[d.feel]||0)+1;if(d.instructionEase) instructionEase[d.instructionEase]=(instructionEase[d.instructionEase]||0)+1;}
       const rows=(!s.gallery_paused || host)?await q(`SELECT s.*,p.data->>'twist' AS twist FROM submissions s JOIN participants p ON p.id=s.participant_id WHERE s.session_id=$1 AND p.run=$2 AND p.data->>'share'='true' AND s.consent_version=p.consent_version ${host?'':'AND s.hidden=false'} ORDER BY s.updated_at DESC`,[id,s.run]):[];
       const gallery:Card[]=rows.map(r=>({id:r.id,kind:r.kind,title:r.title,description:r.description,mine:r.mine,assetId:r.asset_id,hidden:r.hidden,updatedAt:new Date(r.updated_at).toISOString(),twist:r.twist}));
       const telemetry=host?hostTelemetry(people,s.phase,new Set([...streams].filter(c=>c.session===id&&c.role==='participant').map(c=>c.participant!)),new Set(rows.filter(c=>c.kind==='concept').map(c=>c.participant_id))):undefined;
-      return {session:sessionView(s),total:people.length,before,after,paired,transitions,works,feel,progress,gallery,capturedAt:new Date().toISOString(),...(telemetry?{telemetry}:{})};
+      return {session:sessionView(s),total:people.length,before,after,paired,transitions,works,feel,instructionEase,progress,gallery,capturedAt:new Date().toISOString(),...(telemetry?{telemetry}:{})};
     });
   }
   app.get('/v1/sessions/:id/snapshot',async req=>{const id=idParam(req),c=await auth(req,id,['host','stage']);return snapshot(id,c.role==='host');});
@@ -202,13 +203,22 @@ export async function createApp(opts: Options) {
     const id=idParam(req);await auth(req,id,['host']);const b=controls.parse(req.body);
     const out=await db.transaction(async q=>{
       const [s]=await q('SELECT * FROM sessions WHERE id=$1 FOR UPDATE',[id]);if(s.revision!==b.expectedRevision) fail(409,'The session changed. Refresh the controls.');
-      let ends=s.ends_at?new Date(s.ends_at).getTime():null,remaining=s.remaining_ms==null?null:Number(s.remaining_ms),phase=b.phase??s.phase;
-      if(b.phase!==undefined && phase!==s.phase) {ends=phase===1?Date.now()+420000:phase===3?Date.now()+480000:null;remaining=null;}
-      if(b.timer==='pause' && ends) {remaining=Math.max(0,ends-Date.now());ends=null;}
-      if(b.timer==='resume' && remaining!==null) {ends=Date.now()+remaining;remaining=null;}
-      if(b.timer==='extend') {if(ends) ends=Math.max(ends,Date.now())+60000;else remaining=(remaining??0)+60000;}
-      if(b.timer==='reset') {ends=Date.now()+(phase===1?420000:480000);remaining=null;}
-      const [r]=await q('UPDATE sessions SET phase=$1,ends_at=$2,remaining_ms=$3,gallery_paused=$4,stage_view=$5,closed=$6,revision=revision+1 WHERE id=$7 RETURNING *',[phase,ends?new Date(ends):null,remaining,b.galleryPaused??s.gallery_paused,b.stageView??s.stage_view,b.closed??s.closed,id]);return sessionView(r);
+      const phase=b.phase??s.phase,phaseChanged=phase!==s.phase,minutes=ROUND_MINUTES[phase],now=Date.now();
+      let ends=s.ends_at?new Date(s.ends_at).getTime():null,remaining=s.remaining_ms==null?null:Number(s.remaining_ms);
+      if(phaseChanged) {
+        // Give the room time to photograph the build before the host starts reflection.
+        ends=minutes && phase!==2 ? now+minutes*60000 : null;
+        remaining=null;
+      }
+      if(b.timer==='pause' && ends!==null) {remaining=Math.max(0,ends-now);ends=null;}
+      if(b.timer==='resume' && remaining!==null) {ends=now+remaining;remaining=null;}
+      if(b.timer==='extend') {
+        if(ends!==null) ends=Math.max(ends,now)+60000;
+        else if(remaining!==null) remaining+=60000;
+      }
+      if(b.timer==='reset' && minutes) {ends=now+minutes*60000;remaining=null;}
+      const stageView=b.stageView??(phaseChanged?'overview':s.stage_view);
+      const [r]=await q('UPDATE sessions SET phase=$1,ends_at=$2,remaining_ms=$3,gallery_paused=$4,stage_view=$5,closed=$6,revision=revision+1 WHERE id=$7 RETURNING *',[phase,ends?new Date(ends):null,remaining,b.galleryPaused??s.gallery_paused,stageView,b.closed??s.closed,id]);return sessionView(r);
     });notify(id,'session');return out;
   });
   app.patch('/v1/sessions/:id/cards/:card',async req=>{const id=idParam(req);await auth(req,id,['host']);const b=z.object({hidden:z.boolean()}).strict().parse(req.body);const card=z.uuid().parse((req.params as any).card);await db.transaction(async q=>{const [s]=await q('SELECT run FROM sessions WHERE id=$1 FOR SHARE',[id]);const rows=await q('UPDATE submissions SET hidden=$1 WHERE id=$2 AND session_id=$3 AND participant_id IN (SELECT id FROM participants WHERE session_id=$3 AND run=$4) RETURNING id',[b.hidden,card,id,s.run]);if(!rows.length)fail(404,'This card is no longer in the current session.');});notify(id);return {ok:true};});

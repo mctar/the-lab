@@ -8,7 +8,7 @@ export function useActivityReport(w:Workshop){
     syncStatus:w.blocked?'error':w.busy?'sending':w.jobs.length?'queued':'saved',
     waitingForPhase:d.waitingForPhase!=null&&d.waitingForPhase>w.identity.session.phase?d.waitingForPhase:null,
     photos:{pile:!!d.pilePhoto,build:!!d.buildPhoto,concept:!!d.conceptPhoto},handedOff:d.handedOff,
-    cardReady:!!(d.name.trim()&&d.what.trim()&&d.mine.trim())};
+    cardReady:!!(d.name.trim()&&d.what.trim())};
   const current=useRef(report);current.current=report;
   const send=()=>{void request(`/v1/sessions/${w.identity.id}/telemetry`,w.identity.token,{...current.current,visibility:document.visibilityState==='hidden'?'hidden':'visible'}).catch(()=>{});};
   const callback=useRef(send);callback.current=send;

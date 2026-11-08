@@ -7,11 +7,3 @@ export function pairedMovement(transitions:number[][]){
   }
   return {before,after,total,moved,stayed:total-moved};
 }
-
-export function stageHeading(view:string,phase:number,paired:number){
-  if(phase<0)return 'Ready. Set. Build.';
-  if(view==='gallery')return 'Look what we made.';
-  if(view==='reflections')return 'Hands have opinions.';
-  if(view==='results')return paired?'Same room. New moves.':'Where are we starting?';
-  return ['Every builder counts.','Small bricks. Big ideas.','Built by this room.','Make a little magic.','Look what we made.','Our next move.'][phase]||'Built by this room.';
-}

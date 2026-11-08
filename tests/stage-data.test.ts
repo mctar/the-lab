@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {pairedMovement,stageHeading} from '../src/stage-data.js';
+import {pairedMovement} from '../src/stage-data.js';
 
 test('projected before/after paths use only matched answers and conserve each category total',()=>{
   const transitions=[[2,3,1],[4,5,6],[0,2,8]];
@@ -10,6 +10,4 @@ test('projected before/after paths use only matched answers and conserve each ca
   assert.equal(result.total,31);assert.equal(result.moved,16);assert.equal(result.stayed,15);
   assert.equal(result.before.reduce((a,b)=>a+b),result.after.reduce((a,b)=>a+b));
   assert.deepEqual(pairedMovement([[0,0,0],[0,0,0],[0,0,0]]),{before:[0,0,0],after:[0,0,0],total:0,moved:0,stayed:0});
-  assert.equal(stageHeading('results',0,0),'Where are we starting?');
-  assert.equal(stageHeading('overview',-1,0),'Ready. Set. Build.');
 });
