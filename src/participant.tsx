@@ -53,7 +53,7 @@ export function Join(){
     <form onSubmit={join}>
       {showCode?<label className="brick-field">Room code<input className="field" value={code} onChange={e=>setCode(e.target.value.toUpperCase())} autoComplete="off" autoCapitalize="characters" minLength={6} maxLength={12} required/></label>:<p className="brick-room-code">Room <strong>{code}</strong></p>}
       <AIChoice value={aiTool} onChange={setAiTool} disabled={busy}/>
-      <label className="brick-consent"><input type="checkbox" checked={share} onChange={e=>setShare(e.target.checked)}/><span>Allow me to share my builds on the big screen. <small>You choose what to send.</small></span></label>
+      <label className="brick-consent"><input type="checkbox" checked={share} onChange={e=>setShare(e.target.checked)}/><span>I give permission to share uploaded material in this app <small>You choose what to send.</small></span></label>
       {error&&<p className="brick-error" role="alert">{error}</p>}
       <button className="pill solid brick-primary" disabled={busy}>{busy?'Joining…':'Join the workshop'}</button>
     </form>
