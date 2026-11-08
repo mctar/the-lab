@@ -19,7 +19,7 @@ export function Join(){
   const initialCode=params.get('code')||'';
   const [code,setCode]=useState(initialCode);
   const showCode=initialCode.length<6;
-  const [aiTool,setAiTool]=useState<Answers['aiTool']>(),[share,setShare]=useState(false),[before,setBefore]=useState<number>();
+  const [aiTool,setAiTool]=useState<Answers['aiTool']>(),[share,setShare]=useState(false);
   const [error,setError]=useState(''),[busy,setBusy]=useState(false);
   const previous=localStorage.getItem('bwt:last');
 
@@ -32,7 +32,7 @@ export function Join(){
       const room=code.trim().toUpperCase(),key='bwt:join:'+room;
       let joinKey=localStorage.getItem(key);
       if(!joinKey){joinKey=crypto.randomUUID();localStorage.setItem(key,joinKey);}
-      const result=await request<{session:Session;participant:Participant;token:string}>('/v1/join','',{code:room,joinKey,aiTool,share,before});
+      const result=await request<{session:Session;participant:Participant;token:string}>('/v1/join','',{code:room,joinKey,aiTool,share});
       const identity={id:result.session.id,...result};
       localStorage.setItem('bwt:identity:'+identity.id,JSON.stringify(identity));
       localStorage.setItem('bwt:last',identity.id);
@@ -50,7 +50,6 @@ export function Join(){
       {showCode?<label className="brick-field">Room code<input className="field" value={code} onChange={e=>setCode(e.target.value.toUpperCase())} autoComplete="off" autoCapitalize="characters" minLength={6} maxLength={12} required/></label>:<p className="brick-room-code">Room <strong>{code}</strong></p>}
       <AIChoice value={aiTool} onChange={setAiTool} disabled={busy}/>
       <label className="brick-consent"><input type="checkbox" checked={share} onChange={e=>setShare(e.target.checked)}/><span>Allow me to share my builds on the big screen. <small>You choose what to send.</small></span></label>
-      <details className="brick-details"><summary>Optional opening question</summary><p>How do you usually work with AI?</p><Poll label="How do you usually work with AI?" value={before} onChange={setBefore}/></details>
       {error&&<p className="brick-error" role="alert">{error}</p>}
       <button className="pill solid brick-primary" disabled={busy}>{busy?'Joining…':'Join the workshop'}</button>
     </form>

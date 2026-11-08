@@ -119,7 +119,7 @@
 .cue-side:has(.spotlight) .round-clock > strong { font-size: clamp(44px, 7.5vh, 90px); }
 .cue-side:has(.spotlight) .spotlight-copy { padding: 8px 10px; }
 .cue-side:has(.spotlight) .spotlight-copy > p, .cue-side:has(.spotlight) .spotlight-mine { display: none; }
-.play-reflections:has(>section:only-child),.unpaired-results:has(>section:only-child) { grid-template-columns: 1fr; }
+.play-reflections:has(>section:only-child),.unpaired-results:has(>:only-child) { grid-template-columns: 1fr; }
 @media (max-width: 850px) {
   .stage-join, .cue-board.has-side { grid-template-columns: 1fr; gap: 28px; }
   .cue-title-row { flex-wrap: wrap; }

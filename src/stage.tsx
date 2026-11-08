@@ -43,7 +43,10 @@ function Movement({snapshot,motion}:{snapshot:Snapshot;motion:boolean}){
   const {before,after,total,moved,stayed}=pairedMovement(snapshot.transitions);
   if(!total){
     const hasBefore=snapshot.before.some(Boolean),hasAfter=snapshot.after.some(Boolean);
-    return <div className="unpaired-results">{(hasBefore||!hasAfter)&&<VoteBoard counts={snapshot.before} total={snapshot.total} label="Opening question"/>}{hasAfter&&<VoteBoard counts={snapshot.after} total={snapshot.total} label="Closing question"/>}{!hasAfter&&<div className="waiting-reveal"><Brick color={COLORS[2]}/><h2>Closing votes will appear here</h2><p>The opening and closing questions are optional.</p></div>}</div>;
+    return <div className="unpaired-results">
+      {hasBefore&&<VoteBoard counts={snapshot.before} total={snapshot.total} label="Opening question"/>}
+      {hasAfter?<VoteBoard counts={snapshot.after} total={snapshot.total} label="Closing question"/>:<div className="waiting-reveal"><Brick color={COLORS[2]}/><h2>Closing votes will appear here</h2><p>Participants can vote during the final reflection.</p></div>}
+    </div>;
   }
   const ys=[75,235,395];
   return <section className="movement-view" aria-label={`${total} paired answers; ${moved} changed category and ${stayed} stayed in the same category`}>
