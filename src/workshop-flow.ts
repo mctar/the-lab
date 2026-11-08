@@ -1,6 +1,7 @@
 import {hasTimer,type Session} from '../server/model';
 
 export const WORKSHOP_BRIEF='Build something that brings people together.';
+export const WORKSHOP_PROMPT_LABEL='Today’s prompt';
 export const REFLECTION_PROMPTS=[
   'What was the AI’s concept?',
   'How easy was it to follow the AI’s instructions?',
@@ -9,7 +10,7 @@ export const REFLECTION_PROMPTS=[
 
 export const STAGE_STEPS=['Join','Get a plan','Build','Reflect','Make it yours','Finish'];
 const stageCues=[
-  {title:'Get an AI build plan',steps:['Spread out your loose bricks. Take a photo.','Send the photo and the brief to your AI app.','When you have a plan, come back to Brick.']},
+  {title:'Get an AI build plan',steps:['Spread out your loose bricks. Take a photo.','Send the photo and prompt to your AI app.','When you have a plan, come back to Brick.']},
   {title:'Build what the AI suggests',steps:['Try the AI’s plan with the pieces you have.','If a piece is missing, use the closest one.','Come back to Brick when the round ends.']},
   {title:'Reflect on the first build',steps:REFLECTION_PROMPTS},
   {title:'Make it yours',steps:['Return to the same AI chat.','Tell it what you want to change.','Develop the concept in your own direction. It can become a game, an experience, or anything else.']},

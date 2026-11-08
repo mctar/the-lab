@@ -2,7 +2,7 @@ import React,{useEffect,useRef,useState,type CSSProperties} from 'react';
 import {INSTRUCTION_EASE,SCALE,hasTimer,type Card,type Snapshot} from '../server/model';
 import {pairedMovement} from './stage-data';
 import {RoundClock} from './round-clock';
-import {stageCue,STAGE_STEPS,WORKSHOP_BRIEF} from './workshop-flow';
+import {stageCue,STAGE_STEPS,WORKSHOP_BRIEF,WORKSHOP_PROMPT_LABEL} from './workshop-flow';
 import './stage.css';
 
 const COLORS=['#f48bce','#83c9ff','#b4ee6b'];
@@ -124,7 +124,7 @@ export function StageScreen({snapshot,connected,error,qr,joinUrl,photo}:StagePro
         view==='gallery'?<Gallery snapshot={snapshot} photo={photo}/>:
         view==='reflections'?<Reflections snapshot={snapshot}/>:
         <div className={'cue-board'+(timed||showSpotlight?' has-side':'')}>
-          <div className="cue-main"><ol>{cue.steps.map(line=><li key={line}>{line}</li>)}</ol>{s.phase===0&&!s.closed&&<div className="cue-brief"><span>Today’s brief</span><strong>{WORKSHOP_BRIEF}</strong></div>}</div>
+          <div className="cue-main"><ol>{cue.steps.map(line=><li key={line}>{line}</li>)}</ol>{s.phase===0&&!s.closed&&<div className="cue-brief"><span>{WORKSHOP_PROMPT_LABEL}</span><strong>{WORKSHOP_BRIEF}</strong></div>}</div>
           {(timed||showSpotlight)&&<div className="cue-side"><RoundClock session={s}/>{showSpotlight&&<Spotlight cards={snapshot.gallery} paused={false} photo={photo}/>}</div>}
         </div>}
     </main>

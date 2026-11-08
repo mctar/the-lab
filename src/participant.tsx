@@ -4,7 +4,7 @@ import { request, Workshop, photograph, type Identity } from './client';
 import { AIChoice } from './ai-choice';
 import { Button, Shell, useLive } from './ui';
 import { RoundClock } from './round-clock';
-import { REFLECTION_PROMPTS, STAGE_STEPS, WORKSHOP_BRIEF } from './workshop-flow';
+import { REFLECTION_PROMPTS, STAGE_STEPS, WORKSHOP_BRIEF, WORKSHOP_PROMPT_LABEL } from './workshop-flow';
 import { useActivityReport } from './telemetry';
 import './participant.css';
 
@@ -101,9 +101,9 @@ function Handoff({photo,aiName,onBack,onReady}:{photo:string;aiName:string;onBac
     }catch(e){if((e as Error).name!=='AbortError')setManual(true);}
   }
   return <>
-    <p className="brick-lede">Send your loose-brick photo and the brief to {aiName}. Ask it for an idea and instructions you can build.</p>
-    <div className="brick-brief"><span>Today’s brief</span><strong>{WORKSHOP_BRIEF}</strong></div>
-    <Button solid onClick={()=>void share()}>Send photo and prompt</Button>
+    <p className="brick-lede">Send your loose-brick photo and the prompt to {aiName}. Ask it for an idea and instructions you can build.</p>
+    <div className="brick-brief"><span>{WORKSHOP_PROMPT_LABEL}</span><strong>{WORKSHOP_BRIEF}</strong></div>
+    <Button solid onClick={()=>void share()}>Click here to send photo + prompt</Button>
     {notice&&<p className="brick-note" role="status">{notice}</p>}
     <details className="brick-details" open={manual} onToggle={event=>setManual(event.currentTarget.open)}>
       <summary>Send manually</summary>
@@ -112,7 +112,7 @@ function Handoff({photo,aiName,onBack,onReady}:{photo:string;aiName:string;onBac
       <a className="pill" href={photo} download="my-loose-bricks.jpg">Save loose-brick photo</a>
     </details>
     <div className="brick-next"><p>Come back here when your AI gives you a plan.</p><Button onClick={()=>onReady(true)}>I have my plan</Button></div>
-    <details className="brick-details"><summary>Can’t get a plan?</summary><p>You can still try a quick build using today’s brief.</p><Button onClick={()=>onReady(false)}>Continue without a plan</Button></details>
+    <details className="brick-details"><summary>Can’t get a plan?</summary><p>You can still try a quick build using today’s prompt.</p><Button onClick={()=>onReady(false)}>Continue without a plan</Button></details>
     <button className="brick-text-button" type="button" onClick={onBack}>Change my loose-brick photo</button>
   </>;
 }
