@@ -2,6 +2,9 @@ import { z } from 'zod';
 export const WORKSHOP_NAME = 'The Lab';
 export const PHASES = ['Get a build plan', 'Build', 'Capture & reflect', 'Make it yours', 'Concept card', 'Final reflection'];
 export const ROUND_MINUTES: Readonly<Partial<Record<number, number>>> = {1:5, 2:2, 3:10};
+export const CHANGE_CHOICES = ['Who it was for', 'What people would do', 'How it worked', 'Very little'] as const;
+export const CHANGE_QUESTION = 'What changed most from the AI’s first idea?';
+export const FIRST_IDEA_LIMIT = 48;
 export const INSTRUCTION_EASE = ['Easy', 'Some parts were hard', 'Hard'] as const;
 export const SCALE = [['Magic button', 'I hand it over'], ['Centaur', 'We split the work'], ['Cyborg', 'We think as one']];
 export const AI_TOOLS = ['ChatGPT', 'Gemini', 'Claude', 'Copilot', 'Something else'] as const;
@@ -34,6 +37,8 @@ export const answerPatch = z.object({
   before: z.number().int().min(0).max(2).optional(), after: z.number().int().min(0).max(2).optional(),
   works: z.enum(['Yes', 'Partly', 'No']).optional(), feel: z.enum(['Easy', 'Mixed', 'Uncomfortable']).optional(),
   instructionEase: z.enum(INSTRUCTION_EASE).optional(),
+  biggestChange: z.enum(CHANGE_CHOICES).optional(),
+  writeup: z.boolean().optional(),
   share: z.boolean().optional(), progress: z.number().int().min(0).max(9).optional(),
   twist: z.enum(TWISTS as [string, ...string[]]).optional()
 }).strict();
@@ -41,13 +46,22 @@ export const mutation = z.object({ operationId: z.uuid(), expectedRevision: z.nu
 export const resetInput = z.object({operationId:z.uuid(),expectedRevision:z.number().int().nonnegative(),confirmation:z.string().trim().min(6).max(12)}).strict();
 export const cardInput = z.object({
   operationId: z.uuid(), expectedRevision: z.number().int().nonnegative(), consentVersion: z.number().int().nonnegative(),
-  kind: z.enum(['build', 'concept']), title: z.string().trim().max(100).default(''),
+  kind: z.enum(['build', 'concept', 'first-idea', 'writeup-build', 'writeup-concept']), title: z.string().trim().max(100).default(''),
   description: z.string().trim().max(600).default(''), mine: z.string().trim().max(240).default(''),
   assetId: z.uuid().nullable().default(null)
 }).strict();
 export type Answers = z.infer<typeof answerPatch>;
-export type Session = { id: string; code: string; title: string; run:number; phase: number; revision: number; closed: boolean; galleryPaused: boolean; stageView: string; endsAt: string | null; remainingMs: number | null; serverTime: string };
+export type CardKind = z.infer<typeof cardInput>['kind'];
+export const isWriteupKind = (kind:CardKind) => kind==='writeup-build'||kind==='writeup-concept';
+export type Session = { id: string; code: string; title: string; run:number; phase: number; revision: number; closed: boolean; galleryPaused: boolean; stageView: string; endsAt: string | null; remainingMs: number | null; serverTime: string; flowVersion?:number; firstRevealed?:boolean; exchange?:boolean };
 export const hasTimer = (session: Pick<Session, 'endsAt'|'remainingMs'>) => session.endsAt !== null || session.remainingMs !== null;
-export type Participant = { id: string; revision: number; consentVersion: number; data: Answers };
+export const revisedFlow = (session:Pick<Session,'flowVersion'>) => session.flowVersion===2;
+export const roundMinutes = (session:Pick<Session,'phase'|'flowVersion'>) => revisedFlow(session)
+  ? session.phase===0 ? 6 : session.phase===3 ? 6 : ROUND_MINUTES[session.phase]
+  : ROUND_MINUTES[session.phase];
+export type Participant = { id: string; revision: number; consentVersion: number; writeupVersion?:number; data: Answers };
 export type Card = { id: string; kind: string; title: string; description: string; mine: string; assetId: string | null; hidden: boolean; updatedAt: string; twist: string };
-export type Snapshot = { session: Session; total: number; before: number[]; after: number[]; paired: number; transitions: number[][]; works: Record<string, number>; feel: Record<string, number>; instructionEase?: Record<string, number>; progress: number[]; gallery: Card[]; capturedAt: string; telemetry?:HostTelemetry };
+export type IdeaPair = { id:string; first:string; final:string; description:string };
+export type IdeaReveals = { first:Card[]; final:Card[]; pairs:IdeaPair[] };
+export type PublicationPhoto = { assetId:string; label:string; consentedAt:string };
+export type Snapshot = { session: Session; total: number; before: number[]; after: number[]; paired: number; transitions: number[][]; works: Record<string, number>; feel: Record<string, number>; instructionEase?: Record<string, number>; biggestChange?:Record<string,number>; ideas?:IdeaReveals; publication?:PublicationPhoto[]; progress: number[]; gallery: Card[]; capturedAt: string; telemetry?:HostTelemetry };

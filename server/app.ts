@@ -9,18 +9,28 @@ import sharp from 'sharp';
 import { z, ZodError } from 'zod';
 import type { ServerResponse, OutgoingHttpHeaders } from 'node:http';
 import { database, type Database, type Query, type Row } from './db.js';
-import { mutation, cardInput, activityInput, resetInput, answerPatch, CARD_PHASE, ROUND_MINUTES, TWISTS, type Session, type Participant, type Snapshot, type Card } from './model.js';
+import { mutation, cardInput, activityInput, resetInput, answerPatch, CARD_PHASE, FIRST_IDEA_LIMIT, TWISTS, revisedFlow, roundMinutes, isWriteupKind, type Session, type Participant, type Snapshot, type Card } from './model.js';
 import { hostTelemetry } from './activity.js';
+import { purgeExpiredData } from './retention.js';
 
 const hash = (s: string) => createHash('sha256').update(s).digest('hex');
 const fail = (statusCode: number, message: string) => { throw Object.assign(new Error(message), { statusCode }); };
 const idParam = (req: FastifyRequest) => z.uuid().parse((req.params as any).id);
-const sessionView = (r: Row): Session => ({ id:r.id, code:r.code, title:r.title, run:r.run, phase:r.phase, revision:r.revision, closed:r.closed, galleryPaused:r.gallery_paused, stageView:r.stage_view, endsAt:r.ends_at ? new Date(r.ends_at).toISOString() : null, remainingMs:r.remaining_ms == null ? null : Number(r.remaining_ms), serverTime:new Date().toISOString() });
-const personView = (r: Row): Participant => ({ id:r.id, revision:r.revision, consentVersion:r.consent_version, data:r.data });
+const personView = (r: Row): Participant => ({ id:r.id, revision:r.revision, consentVersion:r.consent_version, writeupVersion:r.writeup_version, data:r.data });
+const cardView = (r: Row): Card => ({id:r.id,kind:r.kind,title:r.title,description:r.description,mine:r.mine,assetId:r.asset_id,hidden:r.hidden,updatedAt:new Date(r.updated_at).toISOString(),twist:r.twist});
+const canShare = (p:Row,writeup:boolean,version:number) => writeup
+  ? p.data.writeup===true && p.writeup_version===version
+  : p.data.share===true && p.consent_version===version;
 type Credential = { session_id: string; participant_id: string | null; role: string; expires_at: Date };
 type Options = { db?: Database; databaseUrl?: string; dataDir: string; adminToken: string; origins: string[]; logger?: boolean };
 
 export async function createApp(opts: Options) {
+  const sessionView = (r: Row): Session => ({
+    id:r.id, code:r.code, title:r.title, run:r.run, phase:r.phase, revision:r.revision, closed:r.closed, galleryPaused:r.gallery_paused,
+    stageView:r.stage_view, endsAt:r.ends_at ? new Date(r.ends_at).toISOString() : null,
+    remainingMs:r.remaining_ms == null ? null : Number(r.remaining_ms), serverTime:new Date().toISOString(),
+    flowVersion:r.flow_version, firstRevealed:r.first_revealed, exchange:r.exchange
+  });
   const db = opts.db || await database(opts.databaseUrl, join(opts.dataDir, 'database'));
   const photos = join(opts.dataDir, 'photos'); await mkdir(photos, { recursive:true });
   const app = Fastify({ bodyLimit: 16384, logger: opts.logger ? { redact: ['req.headers.authorization'], serializers: { req: r => ({ method:r.method, url:r.url?.split('?')[0] }) } } : false, requestTimeout: 30000 });
@@ -71,11 +81,11 @@ export async function createApp(opts: Options) {
   app.post('/v1/sessions',async(req,reply)=>{
     const token=req.headers.authorization?.replace(/^Bearer /,'') || '';
     if(!opts.adminToken || !timingSafeEqual(Buffer.from(hash(token)),Buffer.from(hash(opts.adminToken)))) fail(401,'Not authorized.');
-    const b=z.object({title:z.string().trim().min(1).max(120),code:z.string().regex(/^[A-Z2-9]{6,12}$/).optional()}).parse(req.body);
+    const b=z.object({title:z.string().trim().min(1).max(120),code:z.string().regex(/^[A-Z2-9]{6,12}$/).optional(),flowVersion:z.union([z.literal(1),z.literal(2)]).default(2)}).parse(req.body);
     const id=randomUUID(), code=b.code || randomBytes(5).toString('hex').toUpperCase().replace(/[01]/g,'A');
     const hostToken=randomBytes(32).toString('base64url'),stageToken=randomBytes(32).toString('base64url');
     await db.transaction(async q=>{
-      await q('INSERT INTO sessions(id,code,title) VALUES($1,$2,$3)',[id,code,b.title]);
+      await q('INSERT INTO sessions(id,code,title,flow_version) VALUES($1,$2,$3,$4)',[id,code,b.title,b.flowVersion]);
       for(const [role,t] of [['host',hostToken],['stage',stageToken]]) await q("INSERT INTO credentials(hash,session_id,role,expires_at) VALUES($1,$2,$3,now()+interval '30 days')",[hash(t),id,role]);
     }); reply.code(201); return {id,code,title:b.title,hostToken,stageToken};
   });
@@ -88,7 +98,7 @@ export async function createApp(opts: Options) {
       if(!s || s.closed) fail(404,'That session is unavailable. Check the code with your facilitator.');
       const j=hash(s.run===0?s.id+b.joinKey:s.id+':'+s.run+':'+b.joinKey), token=createHmac('sha256',opts.adminToken).update(j).digest('base64url');
       const data={share:b.share??false,aiTool:b.aiTool,before:b.before,progress:0,twist:TWISTS[Math.floor(Math.random()*TWISTS.length)]};
-      const [p]=await q('INSERT INTO participants(id,session_id,join_hash,data,run) VALUES($1,$2,$3,$4,$5) ON CONFLICT(join_hash) DO UPDATE SET join_hash=EXCLUDED.join_hash RETURNING *',[randomUUID(),s.id,j,JSON.stringify(data),s.run]);
+      const [p]=await q("INSERT INTO participants(id,session_id,join_hash,data,run,retain_until) VALUES($1,$2,$3,$4,$5,now()+interval '90 days') ON CONFLICT(join_hash) DO UPDATE SET join_hash=EXCLUDED.join_hash RETURNING *",[randomUUID(),s.id,j,JSON.stringify(data),s.run]);
       await q("INSERT INTO credentials(hash,session_id,participant_id,role,expires_at) VALUES($1,$2,$3,'participant',now()+interval '2 days') ON CONFLICT(hash) DO NOTHING",[hash(token),s.id,p.id]);
       return {session:sessionView(s),participant:personView(p),token};
     });notify(joined.session.id);return joined;
@@ -110,12 +120,18 @@ export async function createApp(opts: Options) {
     const result=await db.transaction(async q=>{
       const {s,p}=await activePerson(q,id,c.participant_id!);
       return writeOp(q,p.id,b.operationId,b,async()=>{
-        if(s.closed && !(Object.keys(b.patch).length===1 && b.patch.share===false)) fail(409,'The session has closed. Your draft is still on this phone.');
+        const withdrawing=Object.keys(b.patch).length>0 && Object.keys(b.patch).every(key=>
+          key==='share' ? b.patch.share===false : key==='writeup' && b.patch.writeup===false);
+        if(s.closed && !withdrawing) fail(409,'The session has closed. Your draft is still on this phone.');
         if(p.revision!==b.expectedRevision) fail(409,'Your answers changed in another tab. Reload before continuing.');
-        for(const [k,v] of Object.entries(b.patch)) {const phase=k==='before'?0:k==='after'?5:['works','feel','instructionEase'].includes(k)?2:k==='twist'?1:k==='progress'?CARD_PHASE[v as number]:-1;if(phase>s.phase) fail(403,'Your facilitator has not opened this phase yet.');}
-        const data={...p.data,...b.patch}, changed=b.patch.share!==undefined && p.data.share!==b.patch.share;
-        const [out]=await q('UPDATE participants SET data=$1,revision=revision+1,consent_version=consent_version+$2 WHERE id=$3 RETURNING *',[JSON.stringify(data),changed?1:0,p.id]);
-        if(changed && !data.share) await q('DELETE FROM submissions WHERE participant_id=$1',[p.id]);
+        if(b.patch.writeup===true && s.flow_version!==2) fail(403,'Public write-up sharing is unavailable.');
+        for(const [k,v] of Object.entries(b.patch)) {const phase=k==='before'?0:k==='after'||k==='biggestChange'?5:['works','feel','instructionEase'].includes(k)?2:k==='twist'?1:k==='progress'?CARD_PHASE[v as number]:-1;if(phase>s.phase) fail(403,'Your facilitator has not opened this phase yet.');}
+        const data={...p.data,...b.patch};
+        const roomChanged=b.patch.share!==undefined && !!p.data.share!==b.patch.share;
+        const writeupChanged=b.patch.writeup!==undefined && !!p.data.writeup!==b.patch.writeup;
+        const [out]=await q('UPDATE participants SET data=$1,revision=revision+1,consent_version=consent_version+$2,writeup_version=writeup_version+$3 WHERE id=$4 RETURNING *',[JSON.stringify(data),Number(roomChanged),Number(writeupChanged),p.id]);
+        if(roomChanged && !data.share) await q("DELETE FROM submissions WHERE participant_id=$1 AND kind NOT IN ('writeup-build','writeup-concept')",[p.id]);
+        if(writeupChanged && !data.writeup) await q("DELETE FROM submissions WHERE participant_id=$1 AND kind IN ('writeup-build','writeup-concept')",[p.id]);
         return personView(out);
       });
     });notify(id);return result;
@@ -123,9 +139,10 @@ export async function createApp(opts: Options) {
   let processingPhotos=0;
   app.post('/v1/sessions/:id/photos',async req=>{
     const id=idParam(req),c=await auth(req,id,['participant']);limit('photo:'+c.participant_id,12);
-    const version=z.coerce.number().int().nonnegative().parse((req.query as any).consentVersion);
+    const {consentVersion:version,purpose}=z.object({consentVersion:z.coerce.number().int().nonnegative(),purpose:z.enum(['room','writeup']).default('room')}).parse(req.query);
+    const writeup=purpose==='writeup';
     const {p}=await db.transaction(q=>activePerson(q,id,c.participant_id!));
-    if(!p.data.share || p.consent_version!==version) fail(403,'Enable sharing before uploading a photo.');
+    if(!canShare(p,writeup,version)) fail(403,'Enable sharing before uploading a photo.');
     const file=await req.file();if(!file) fail(400,'Choose a photo.');
     if(!['image/jpeg','image/png','image/webp','image/heic','image/heif'].includes(file!.mimetype)) fail(400,'Choose a JPEG, PNG, or WebP photo.');
     const buffer=await file!.toBuffer();
@@ -139,10 +156,10 @@ export async function createApp(opts: Options) {
       await writeFile(path+'.tmp',full);await rename(path+'.tmp',path);await writeFile(join(photos,asset+'-thumb.jpg'),thumb);
       await db.transaction(async q=>{
         const {s,p:current}=await activePerson(q,id,c.participant_id!);
-        if(!current.data.share || current.consent_version!==version) fail(403,'Sharing was stopped while uploading.');
+        if(!canShare(current,writeup,version)) fail(403,'Sharing was stopped while uploading.');
         if(s.closed) fail(409,'The session has closed.');
         const [count]=await q('SELECT count(*) AS n FROM assets WHERE participant_id=$1',[c.participant_id]);if(Number(count.n)>=12) fail(409,'Photo limit reached for this session.');
-        await q('INSERT INTO assets(id,session_id,participant_id,consent_version) VALUES($1,$2,$3,$4)',[asset,id,c.participant_id,version]);
+        await q('INSERT INTO assets(id,session_id,participant_id,consent_version,purpose) VALUES($1,$2,$3,$4,$5)',[asset,id,c.participant_id,version,purpose]);
       }); return {assetId:asset};
     } catch(e) {await Promise.all([unlink(path).catch(()=>{}),unlink(path+'.tmp').catch(()=>{}),unlink(join(photos,asset+'-thumb.jpg')).catch(()=>{})]); if((e as any).statusCode) throw e;fail(400,'This photo could not be opened. Try taking a new photo.');}finally{processingPhotos--;}
   });
@@ -151,22 +168,31 @@ export async function createApp(opts: Options) {
     const result=await db.transaction(async q=>{
       const {s,p}=await activePerson(q,id,c.participant_id!);
       return writeOp(q,p.id,b.operationId,b,async()=>{
-        if(s.closed || s.phase<(b.kind==='build'?2:4)) fail(403,'This phase is not open.');
+        const writeup=isWriteupKind(b.kind), firstIdea=b.kind==='first-idea';
+        const opensAt=b.kind==='concept'||b.kind==='writeup-concept'?4:2;
+        if(s.closed || s.phase<opensAt || (writeup||firstIdea)&&s.flow_version!==2) fail(403,'This phase is not open.');
         if(p.revision!==b.expectedRevision) fail(409,'Your answers changed. Reload before submitting.');
-        if(!p.data.share || p.consent_version!==b.consentVersion) fail(403,'Sharing permission changed. Submit again with your current choice.');
+        if(!canShare(p,writeup,b.consentVersion)) fail(403,'Sharing permission changed. Submit again with your current choice.');
         if(b.kind==='concept' && (!b.title || !b.description)) fail(400,'Add a title and a short description.');
-        if(b.kind==='build' && !b.assetId) fail(400,'Add a build photo first.');
-        if(b.assetId) {const [a]=await q('SELECT * FROM assets WHERE id=$1 AND participant_id=$2 AND session_id=$3 AND consent_version=$4',[b.assetId,p.id,id,b.consentVersion]);if(!a) fail(403,'This photo is unavailable. Upload it again.');}
+        if((b.kind==='build'||writeup) && !b.assetId) fail(400,'Add a photo first.');
+        if(firstIdea&&(!b.title||b.title.length>FIRST_IDEA_LIMIT||b.description||b.mine||b.assetId)) fail(400,'Enter just a short name for the AI’s first idea.');
+        if(writeup&&(b.title||b.description||b.mine)) fail(400,'Only the selected photo can be submitted for the write-up.');
+        if(b.assetId) {const [a]=await q('SELECT id FROM assets WHERE id=$1 AND participant_id=$2 AND session_id=$3 AND consent_version=$4 AND purpose=$5',[b.assetId,p.id,id,b.consentVersion,writeup?'writeup':'room']);if(!a) fail(403,'This photo is unavailable. Upload it again.');}
         const [card]=await q('INSERT INTO submissions(id,session_id,participant_id,kind,title,description,mine,asset_id,consent_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(participant_id,kind) DO UPDATE SET title=EXCLUDED.title,description=EXCLUDED.description,mine=EXCLUDED.mine,asset_id=EXCLUDED.asset_id,consent_version=EXCLUDED.consent_version,updated_at=now() RETURNING id',[randomUUID(),id,p.id,b.kind,b.title,b.description,b.mine,b.assetId,b.consentVersion]);return {id:card.id};
       });
     });notify(id);return result;
   });
   app.get('/v1/sessions/:id/assets/:asset',async(req,reply)=>{
     const id=idParam(req),c=await auth(req,id),asset=z.uuid().parse((req.params as any).asset);
-    const [a]=await db.query('SELECT a.*,p.data,p.consent_version AS current_consent FROM assets a JOIN participants p ON p.id=a.participant_id WHERE a.id=$1 AND a.session_id=$2 AND p.run=(SELECT run FROM sessions WHERE id=$2)',[asset,id]);
+    const [a]=await db.query('SELECT a.*,p.data,p.consent_version AS room_version,p.writeup_version FROM assets a JOIN participants p ON p.id=a.participant_id WHERE a.id=$1 AND a.session_id=$2 AND p.run=(SELECT run FROM sessions WHERE id=$2)',[asset,id]);
     if(!a) fail(404,'Photo unavailable.');
     if(c.role==='participant' && a.participant_id!==c.participant_id) fail(403,'Photo unavailable.');
-    if(c.role!=='participant') {const [card]=await db.query('SELECT id FROM submissions WHERE asset_id=$1 AND hidden=false AND consent_version=$2',[asset,a.current_consent]);if(!a.data.share || !card) fail(404,'Photo unavailable.');}
+    if(c.role!=='participant') {
+      const writeup=a.purpose==='writeup',version=writeup?a.writeup_version:a.room_version;
+      if(writeup&&c.role!=='host') fail(404,'Photo unavailable.');
+      const [card]=await db.query('SELECT id FROM submissions WHERE asset_id=$1 AND hidden=false AND consent_version=$2',[asset,version]);
+      if(!canShare({...a,consent_version:a.room_version},writeup,version) || !card) fail(404,'Photo unavailable.');
+    }
     const path=join(photos,asset+((req.query as any).full==='1'?'':'-thumb')+'.jpg');await stat(path);
     reply.type('image/jpeg');return reply.send(createReadStream(path));
   });
@@ -174,12 +200,42 @@ export async function createApp(opts: Options) {
     return db.transaction(async q=>{
       const [s]=await q('SELECT * FROM sessions WHERE id=$1 FOR SHARE',[id]);if(!s)fail(404,'Session not found.');
       const people=await q('SELECT * FROM participants WHERE session_id=$1 AND run=$2 ORDER BY created_at,id',[id,s.run]);
-      const before=[0,0,0],after=[0,0,0],transitions=[[0,0,0],[0,0,0],[0,0,0]],progress=Array(10).fill(0),works:Record<string,number>={},feel:Record<string,number>={},instructionEase:Record<string,number>={};let paired=0;
-      for(const {data:d} of people) {if(d.before!=null) before[d.before]++;if(d.after!=null) after[d.after]++;if(d.before!=null && d.after!=null) {paired++;transitions[d.before][d.after]++;}progress[d.progress||0]++;if(d.works) works[d.works]=(works[d.works]||0)+1;if(d.feel) feel[d.feel]=(feel[d.feel]||0)+1;if(d.instructionEase) instructionEase[d.instructionEase]=(instructionEase[d.instructionEase]||0)+1;}
-      const rows=(!s.gallery_paused || host)?await q(`SELECT s.*,p.data->>'twist' AS twist FROM submissions s JOIN participants p ON p.id=s.participant_id WHERE s.session_id=$1 AND p.run=$2 AND p.data->>'share'='true' AND s.consent_version=p.consent_version ${host?'':'AND s.hidden=false'} ORDER BY s.updated_at DESC`,[id,s.run]):[];
-      const gallery:Card[]=rows.map(r=>({id:r.id,kind:r.kind,title:r.title,description:r.description,mine:r.mine,assetId:r.asset_id,hidden:r.hidden,updatedAt:new Date(r.updated_at).toISOString(),twist:r.twist}));
-      const telemetry=host?hostTelemetry(people,s.phase,new Set([...streams].filter(c=>c.session===id&&c.role==='participant').map(c=>c.participant!)),new Set(rows.filter(c=>c.kind==='concept').map(c=>c.participant_id))):undefined;
-      return {session:sessionView(s),total:people.length,before,after,paired,transitions,works,feel,instructionEase,progress,gallery,capturedAt:new Date().toISOString(),...(telemetry?{telemetry}:{})};
+      const before=[0,0,0],after=[0,0,0],transitions=[[0,0,0],[0,0,0],[0,0,0]],progress=Array(10).fill(0);
+      const works:Record<string,number>={},feel:Record<string,number>={},instructionEase:Record<string,number>={},biggestChange:Record<string,number>={};
+      let paired=0;
+      for(const {data:d} of people) {
+        if(d.before!=null) before[d.before]++;
+        if(d.after!=null) after[d.after]++;
+        if(d.before!=null && d.after!=null) {paired++;transitions[d.before][d.after]++;}
+        progress[d.progress||0]++;
+        if(d.works) works[d.works]=(works[d.works]||0)+1;
+        if(d.feel) feel[d.feel]=(feel[d.feel]||0)+1;
+        if(d.instructionEase) instructionEase[d.instructionEase]=(instructionEase[d.instructionEase]||0)+1;
+        if(d.biggestChange) biggestChange[d.biggestChange]=(biggestChange[d.biggestChange]||0)+1;
+      }
+      const showFirst=s.phase>=2&&s.stage_view==='first-ideas';
+      const compare=s.phase===5&&s.stage_view==='comparison';
+      const rows=(!s.gallery_paused || host)?await q(`
+        SELECT s.*,p.data->>'twist' AS twist FROM submissions s JOIN participants p ON p.id=s.participant_id
+        WHERE s.session_id=$1 AND p.run=$2 AND (
+          (s.kind NOT IN ('writeup-build','writeup-concept') AND p.data->>'share'='true' AND s.consent_version=p.consent_version
+            AND ($3::boolean OR (s.hidden=false AND (s.kind<>'first-idea' OR $4::boolean))))
+          OR ($3::boolean AND s.kind IN ('writeup-build','writeup-concept') AND p.data->>'writeup'='true' AND s.consent_version=p.writeup_version)
+        ) ORDER BY s.updated_at DESC`,[id,s.run,host,showFirst||compare]):[];
+      const concepts=rows.filter(row=>row.kind==='concept');
+      const gallery=rows.filter(row=>row.kind==='build'||row.kind==='concept').map(cardView);
+      const first=rows.filter(row=>row.kind==='first-idea');
+      const finals=new Map(concepts.filter(row=>!row.hidden).map(row=>[row.participant_id,row]));
+      const pairs=(host||compare)?first.flatMap(row=>{
+        const final=finals.get(row.participant_id);
+        return !row.hidden&&final?[{id:row.id,first:row.title,final:final.title,description:final.description}]:[];
+      }):[];
+      const ideas=host||showFirst||compare?{first:first.map(cardView),final:compare?concepts.map(cardView):[],pairs}:undefined;
+      const telemetry=host?hostTelemetry(people,s.phase,new Set([...streams].filter(c=>c.session===id&&c.role==='participant').map(c=>c.participant!)),new Set(concepts.map(c=>c.participant_id))):undefined;
+      const publication=host?rows.filter(row=>isWriteupKind(row.kind)&&!row.hidden&&row.asset_id).map(row=>({
+        assetId:row.asset_id,label:row.kind==='writeup-build'?'First build photo':'Concept image',consentedAt:new Date(row.updated_at).toISOString()
+      })):undefined;
+      return {session:sessionView(s),total:people.length,before,after,paired,transitions,works,feel,instructionEase,biggestChange,progress,gallery,ideas,publication,capturedAt:new Date().toISOString(),...(telemetry?{telemetry}:{})};
     });
   }
   app.get('/v1/sessions/:id/snapshot',async req=>{const id=idParam(req),c=await auth(req,id,['host','stage']);return snapshot(id,c.role==='host');});
@@ -191,19 +247,25 @@ export async function createApp(opts: Options) {
         if(s.revision!==b.expectedRevision)fail(409,'The session changed. Close this confirmation and try again.');
         if(b.confirmation!==s.code)fail(400,'Type the room code exactly to confirm the reset.');
         const [count]=await q('SELECT count(*) AS n FROM participants WHERE session_id=$1 AND run=$2',[id,s.run]);
-        const [next]=await q("UPDATE sessions SET run=run+1,revision=revision+1,phase=-1,closed=false,gallery_paused=false,stage_view='overview',ends_at=NULL,remaining_ms=NULL WHERE id=$1 RETURNING *",[id]);
+        const [next]=await q("UPDATE sessions SET run=run+1,revision=revision+1,phase=-1,closed=false,gallery_paused=false,stage_view='overview',ends_at=NULL,remaining_ms=NULL,flow_version=2,exchange=false,first_revealed=false WHERE id=$1 RETURNING *",[id]);
         changed=true;return {session:sessionView(next),previous:sessionView(s),clearedParticipants:Number(count.n)};
       });
     });
     if(changed){notify(id,'reset');for(const client of streams)if(client.session===id&&client.role==='participant')client.res.end();}
     return out;
   });
-  const controls=z.object({expectedRevision:z.number().int().nonnegative(),phase:z.number().int().min(-1).max(5).optional(),timer:z.enum(['pause','resume','extend','reset']).optional(),galleryPaused:z.boolean().optional(),stageView:z.enum(['overview','results','gallery','reflections']).optional(),closed:z.boolean().optional()}).strict();
+  const controls=z.object({expectedRevision:z.number().int().nonnegative(),phase:z.number().int().min(-1).max(5).optional(),timer:z.enum(['pause','resume','extend','reset']).optional(),galleryPaused:z.boolean().optional(),stageView:z.enum(['overview','results','gallery','reflections','first-ideas','comparison']).optional(),exchange:z.literal(true).optional(),closed:z.boolean().optional()}).strict();
   app.patch('/v1/sessions/:id/control',async req=>{
     const id=idParam(req);await auth(req,id,['host']);const b=controls.parse(req.body);
     const out=await db.transaction(async q=>{
       const [s]=await q('SELECT * FROM sessions WHERE id=$1 FOR UPDATE',[id]);if(s.revision!==b.expectedRevision) fail(409,'The session changed. Refresh the controls.');
-      const phase=b.phase??s.phase,phaseChanged=phase!==s.phase,minutes=ROUND_MINUTES[phase],now=Date.now();
+      const phase=b.phase??s.phase,phaseChanged=phase!==s.phase,now=Date.now();
+      const revised=revisedFlow({flowVersion:s.flow_version});
+      if(b.exchange&&(!revised||s.closed||phaseChanged||phase!==2||s.exchange||(!s.ends_at&&s.remaining_ms==null))) fail(409,'Start reflection before opening the neighbour exchange.');
+      if(b.stageView==='first-ideas'&&(!revised||phase<2) || b.stageView==='comparison'&&(!revised||phase!==5)) fail(403,'This reveal is not open yet.');
+      const minutes=roundMinutes({flowVersion:s.flow_version,phase});
+      const exchange=phase===2&&(!!b.exchange||!phaseChanged&&s.exchange);
+      const firstRevealed=s.first_revealed||b.stageView==='first-ideas';
       let ends=s.ends_at?new Date(s.ends_at).getTime():null,remaining=s.remaining_ms==null?null:Number(s.remaining_ms);
       if(phaseChanged) {
         // Give the room time to photograph the build before the host starts reflection.
@@ -216,12 +278,23 @@ export async function createApp(opts: Options) {
         if(ends!==null) ends=Math.max(ends,now)+60000;
         else if(remaining!==null) remaining+=60000;
       }
-      if(b.timer==='reset' && minutes) {ends=now+minutes*60000;remaining=null;}
-      const stageView=b.stageView??(phaseChanged?'overview':s.stage_view);
-      const [r]=await q('UPDATE sessions SET phase=$1,ends_at=$2,remaining_ms=$3,gallery_paused=$4,stage_view=$5,closed=$6,revision=revision+1 WHERE id=$7 RETURNING *',[phase,ends?new Date(ends):null,remaining,b.galleryPaused??s.gallery_paused,stageView,b.closed??s.closed,id]);return sessionView(r);
+      if((b.timer==='reset'||b.exchange) && minutes) {ends=now+minutes*60000;remaining=null;}
+      const stageView=b.stageView??(b.closed||b.exchange?'overview':phaseChanged?(revised&&phase===5?'comparison':'overview'):s.stage_view);
+      const [r]=await q('UPDATE sessions SET phase=$1,ends_at=$2,remaining_ms=$3,gallery_paused=$4,stage_view=$5,closed=$6,exchange=$7,first_revealed=$8,revision=revision+1 WHERE id=$9 RETURNING *',[phase,ends?new Date(ends):null,remaining,b.galleryPaused??s.gallery_paused,stageView,b.closed??s.closed,exchange,firstRevealed,id]);return sessionView(r);
     });notify(id,'session');return out;
   });
   app.patch('/v1/sessions/:id/cards/:card',async req=>{const id=idParam(req);await auth(req,id,['host']);const b=z.object({hidden:z.boolean()}).strict().parse(req.body);const card=z.uuid().parse((req.params as any).card);await db.transaction(async q=>{const [s]=await q('SELECT run FROM sessions WHERE id=$1 FOR SHARE',[id]);const rows=await q('UPDATE submissions SET hidden=$1 WHERE id=$2 AND session_id=$3 AND participant_id IN (SELECT id FROM participants WHERE session_id=$3 AND run=$4) RETURNING id',[b.hidden,card,id,s.run]);if(!rows.length)fail(404,'This card is no longer in the current session.');});notify(id);return {ok:true};});
+  app.delete('/v1/sessions/:id/publication/:asset',async req=>{
+    const id=idParam(req),asset=z.uuid().parse((req.params as any).asset);
+    await auth(req,id,['host']);
+    await db.transaction(async q=>{
+      const [s]=await q('SELECT run FROM sessions WHERE id=$1 FOR SHARE',[id]);
+      await q(`DELETE FROM submissions WHERE session_id=$1 AND asset_id=$2 AND kind IN ('writeup-build','writeup-concept')
+        AND participant_id IN (SELECT id FROM participants WHERE session_id=$1 AND run=$3)`,[id,asset,s.run]);
+    });
+    notify(id);
+    return {ok:true};
+  });
   app.get('/v1/sessions/:id/export',async(req,reply)=>{const id=idParam(req);await auth(req,id,['host']);reply.header('Content-Disposition','attachment; filename="workshop-results.json"');const out=await snapshot(id,true);return {...out,answers:await db.query('SELECT data FROM participants WHERE session_id=$1 AND run=$2',[id,out.session.run])};});
   app.get('/v1/sessions/:id/events',async(req,reply)=>{
     const id=idParam(req),c=await auth(req,id);if(streams.size>=1200) fail(503,'Live updates are busy. Retrying shortly.');
@@ -231,7 +304,14 @@ export async function createApp(opts: Options) {
     const beat=setInterval(()=>{if(Date.now()>new Date(c.expires_at).getTime()) res.end();else res.write(': heartbeat\n\n');},15000);
     res.on('close',()=>{clearInterval(beat);streams.delete(client);if(c.role==='participant')notify(id,'telemetry');});
   });
-  app.addHook('preClose',async()=>{for(const s of streams)s.res.end();});
-  app.addHook('onClose',async()=>{clearInterval(clean);await db.close();});
+  let purge:Promise<void>|undefined;
+  const maintainRetention=()=>{
+    purge ??= purgeExpiredData(db,photos).catch(error=>app.log.error(error,'Workshop retention cleanup failed')).finally(()=>{purge=undefined;});
+    return purge;
+  };
+  const retentionTimer=setInterval(maintainRetention,15*60000);retentionTimer.unref();
+  app.addHook('onReady',async()=>{await maintainRetention();});
+  app.addHook('preClose',async()=>{clearInterval(retentionTimer);for(const s of streams)s.res.end();});
+  app.addHook('onClose',async()=>{clearInterval(clean);await purge;await db.close();});
   return app;
 }

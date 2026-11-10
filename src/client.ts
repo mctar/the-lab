@@ -1,5 +1,5 @@
 import { get, set, del } from 'idb-keyval';
-import type { Answers, Participant, Session } from '../server/model';
+import { isWriteupKind, type Answers, type CardKind, type Participant, type Session } from '../server/model';
 export const API=(import.meta.env?.VITE_API_URL || '').replace(/\/$/,'');
 export class ApiError extends Error { constructor(public status:number,message:string){super(message);} }
 export async function request<T>(path:string,token='',body?:unknown,method=body?'POST':'GET',signal?:AbortSignal):Promise<T> {
@@ -19,10 +19,10 @@ export async function live(id:string,token:string,signal:AbortSignal,onChange:()
     await new Promise<void>(resolve=>{const t=setTimeout(resolve,2500+Math.random()*2000);signal.addEventListener('abort',()=>{clearTimeout(t);resolve();},{once:true});});
   }
 }
-export type Draft={step:number; aiConcept:string; decided:string; name:string; what:string; mine:string; pilePhoto:string; buildPhoto:string; conceptPhoto:string; handedOff:boolean; buildCaptured:boolean; buildSent:boolean; sent:boolean; answers:Answers;waitingForPhase:number|null};
-const blank=():Draft=>({step:0,aiConcept:'',decided:'',name:'',what:'',mine:'',pilePhoto:'',buildPhoto:'',conceptPhoto:'',handedOff:false,buildCaptured:false,buildSent:false,sent:false,answers:{},waitingForPhase:null});
+export type Draft={step:number; aiConcept:string; firstIdea:string; firstIdeaSent:string; decided:string; name:string; what:string; mine:string; pilePhoto:string; buildPhoto:string; conceptPhoto:string; handedOff:boolean; buildCaptured:boolean; buildSent:boolean; sent:boolean; buildWriteupSent:boolean; conceptWriteupSent:boolean; answers:Answers;waitingForPhase:number|null};
+const blank=():Draft=>({step:0,aiConcept:'',firstIdea:'',firstIdeaSent:'',decided:'',name:'',what:'',mine:'',pilePhoto:'',buildPhoto:'',conceptPhoto:'',handedOff:false,buildCaptured:false,buildSent:false,sent:false,buildWriteupSent:false,conceptWriteupSent:false,answers:{},waitingForPhase:null});
 type DraftStore={get:<T>(key:string)=>Promise<T|undefined>;set:(key:string,value:unknown)=>Promise<void>;del:(key:string)=>Promise<void>};
-type Job={id:string; kind:'patch'|'publish'; patch?:Answers; card?:{kind:'build'|'concept'; title:string; description:string; mine:string; photo:string}; body?:any; assetId?:string; consentVersion?:number};
+type Job={id:string; kind:'patch'|'publish'; patch?:Answers; card?:{kind:CardKind; title:string; description:string; mine:string; photo:string}; body?:any; assetId?:string; consentVersion?:number};
 export type Identity={id:string;token:string;participant:Participant;session:Session};
 export class Workshop {
   draft=blank(); jobs:Job[]=[]; message=''; busy=false; blocked=false; reset=false; onChange=()=>{}; onReset=()=>{}; private persisting=Promise.resolve();private abort=new AbortController();
@@ -33,21 +33,31 @@ export class Workshop {
   edit(patch:Partial<Draft>){if(this.reset)return;Object.assign(this.draft,patch);this.onChange();void this.persist().catch(()=>{});}
   async patch(patch:Answers){
     if(this.reset)return;Object.assign(this.draft.answers,patch);
-    if(patch.share===false){this.jobs=this.jobs.filter(j=>j.kind!=='publish');this.draft.sent=false;this.draft.buildSent=false;}
+    if(patch.share===false){
+      this.jobs=this.jobs.filter(j=>!j.card||isWriteupKind(j.card.kind));
+      this.draft.sent=false;this.draft.buildSent=false;this.draft.firstIdeaSent='';
+    }
+    if(patch.writeup===false){
+      this.jobs=this.jobs.filter(j=>!j.card||!isWriteupKind(j.card.kind));
+      this.draft.buildWriteupSent=false;this.draft.conceptWriteupSent=false;
+    }
     this.jobs.push({id:crypto.randomUUID(),kind:'patch',patch});this.onChange();await this.persist();void this.flush();
   }
-  publishing(kind:'build'|'concept'){return this.jobs.some(job=>job.card?.kind===kind);}
-  async publish(kind:'build'|'concept',allowSharing=false){
+  publishing(kind:CardKind){return this.jobs.some(job=>job.card?.kind===kind);}
+  async publish(kind:CardKind,allowSharing=false){
     if(this.reset||this.publishing(kind))return;
     const draft=this.draft;
-    if(!draft.answers.share){
+    const permission=isWriteupKind(kind)?'writeup':'share';
+    if(!draft.answers[permission]){
       if(!allowSharing)return;
-      draft.answers.share=true;
-      this.jobs.push({id:crypto.randomUUID(),kind:'patch',patch:{share:true}});
+      draft.answers[permission]=true;
+      this.jobs.push({id:crypto.randomUUID(),kind:'patch',patch:{[permission]:true}});
     }
-    this.jobs.push({id:crypto.randomUUID(),kind:'publish',card:{kind,title:kind==='concept'?draft.name:'First build',description:kind==='concept'?draft.what:'',mine:kind==='concept'?draft.mine:'',photo:kind==='concept'?draft.conceptPhoto:draft.buildPhoto}});
+    const title=kind==='first-idea'?draft.firstIdea.trim():kind==='concept'?draft.name:kind==='build'?'First build':'';
+    const photo=kind==='first-idea'?'':kind==='build'||kind==='writeup-build'?draft.buildPhoto:draft.conceptPhoto;
+    this.jobs.push({id:crypto.randomUUID(),kind:'publish',card:{kind,title,description:kind==='concept'?draft.what:'',mine:kind==='concept'?draft.mine:'',photo}});
     if(kind==='concept')draft.sent=false;
-    else draft.buildSent=false;
+    if(kind==='build')draft.buildSent=false;
     this.onChange();await this.persist();void this.flush();
   }
   async flush(){
@@ -60,17 +70,21 @@ export class Workshop {
           job.body ||= {operationId:job.id,expectedRevision:this.identity.participant.revision,patch:job.patch};await this.persist();
           const participant=await request<Participant>(`/v1/sessions/${id}/me`,token,job.body,'PATCH',this.abort.signal);if(this.reset)return;this.identity.participant=participant;
         } else {
-          if(!this.draft.answers.share){this.jobs.shift();continue;}
+          const card=job.card!;
+          const writeup=isWriteupKind(card.kind),permission=writeup?'writeup':'share';
+          if(!this.draft.answers[permission]){this.jobs.shift();continue;}
           try{
-            job.consentVersion ??= this.identity.participant.consentVersion;await this.persist();
-            if(job.card!.photo && !job.assetId){
-              const blob=await(await fetch(job.card!.photo)).blob(),form=new FormData();form.append('photo',blob,'build.jpg');
-              const res=await fetch(API+`/v1/sessions/${id}/photos?consentVersion=${job.consentVersion}`,{method:'POST',signal:AbortSignal.any([this.abort.signal,AbortSignal.timeout(45000)]),headers:{Authorization:'Bearer '+token},body:form});
+            job.consentVersion ??= writeup?this.identity.participant.writeupVersion??0:this.identity.participant.consentVersion;
+            await this.persist();
+            if(card.photo && !job.assetId){
+              const blob=await(await fetch(card.photo)).blob(),form=new FormData();form.append('photo',blob,'build.jpg');
+              const purpose=writeup?'writeup':'room';
+              const res=await fetch(API+`/v1/sessions/${id}/photos?consentVersion=${job.consentVersion}&purpose=${purpose}`,{method:'POST',signal:AbortSignal.any([this.abort.signal,AbortSignal.timeout(45000)]),headers:{Authorization:'Bearer '+token},body:form});
               if(!res.ok){const e=await res.json();throw new ApiError(res.status,e.error);}
               const uploaded=await res.json();if(this.reset)return;job.assetId=uploaded.assetId;await this.persist();
             }
-            if(this.reset)return;if(!this.draft.answers.share || !this.jobs.includes(job))continue;
-            job.body ||= {operationId:job.id,expectedRevision:this.identity.participant.revision,consentVersion:job.consentVersion,kind:job.card!.kind,title:job.card!.title,description:job.card!.description,mine:job.card!.mine,assetId:job.assetId||null};await this.persist();
+            if(this.reset)return;if(!this.draft.answers[permission] || !this.jobs.includes(job))continue;
+            job.body ||= {operationId:job.id,expectedRevision:this.identity.participant.revision,consentVersion:job.consentVersion,kind:card.kind,title:card.title,description:card.description,mine:card.mine,assetId:job.assetId||null};await this.persist();
             await request(`/v1/sessions/${id}/cards`,token,job.body,'POST',this.abort.signal);
           }catch(e){
             // A withdrawn publication must never block the consent update behind it.
@@ -78,10 +92,13 @@ export class Workshop {
             throw e;
           }
           if(this.reset)return;
-          const draft=this.draft,card=job.card!;
-          if(this.jobs.includes(job)&&draft.answers.share){
+          const draft=this.draft;
+          if(this.jobs.includes(job)&&draft.answers[permission]){
             if(card.kind==='build'&&card.photo===draft.buildPhoto)draft.buildSent=true;
             if(card.kind==='concept'&&card.title===draft.name&&card.description===draft.what&&card.mine===draft.mine&&card.photo===draft.conceptPhoto)draft.sent=true;
+            if(card.kind==='first-idea')draft.firstIdeaSent=card.title;
+            if(card.kind==='writeup-build'&&card.photo===draft.buildPhoto)draft.buildWriteupSent=true;
+            if(card.kind==='writeup-concept'&&card.photo===draft.conceptPhoto)draft.conceptWriteupSent=true;
           }
         }
         if(this.jobs[0]===job)this.jobs.shift();this.message='';await this.persist();this.onChange();

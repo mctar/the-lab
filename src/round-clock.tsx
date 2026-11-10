@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Session } from '../server/model';
+import { revisedFlow, type Session } from '../server/model';
 
 export function RoundClock({session,compact=false}:{session:Session;compact?:boolean}){
   const [now,setNow]=useState(Date.now);
@@ -20,10 +20,12 @@ export function RoundClock({session,compact=false}:{session:Session;compact?:boo
   const remaining=paused?session.remainingMs:session.endsAt?Date.parse(session.endsAt)-serverNow:null;
   if(remaining===null)return null;
   const seconds=Math.max(0,Math.ceil(remaining/1000));
-  const round:Partial<Record<number,string>>={1:'Build',2:'Reflection',3:'Make it yours'};
+  const round:Partial<Record<number,string>>={0:'Get a plan',1:'Build',2:session.exchange?'Neighbour exchange':'Reflection',3:'Make it yours'};
   const label=paused?'Timer paused':seconds===0?'Time is up':`${round[session.phase]||'Round'} · time remaining`;
+  const handoffCue=revisedFlow(session)&&session.phase===0&&seconds<=60&&!paused;
   return <div className={`round-clock${compact?' compact':''}${seconds<=30?' ending':''}`}>
     <span aria-live="polite">{label}</span>
     <strong role="timer" aria-label={label}>{Math.floor(seconds/60)}:{String(seconds%60).padStart(2,'0')}</strong>
+    {handoffCue&&<small className="round-clock-cue" role="status">If your AI is still working, you can build from today’s prompt.</small>}
   </div>;
 }

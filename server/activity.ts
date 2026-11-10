@@ -16,7 +16,7 @@ export function hostTelemetry(people:Row[],phase:number,connected:Set<string>,su
     return {id:p.id,label:participantLabel(p.id),step,reported,stepStartedAt:iso(p.step_started_at),lastSeenAt:iso(p.last_seen_at),joinedAt:iso(p.created_at)!,
       connected:connected.has(p.id),visibility:status.visibility||null,waitingForPhase,pendingSaves,pendingSince:iso(p.pending_since_at),syncStatus:status.syncStatus||null,
       photos:status.photos||null,handedOff:reported?!!status.handedOff:null,cardReady:reported?!!status.cardReady:null,
-      answeredBefore:data.before!=null,answeredAfter:data.after!=null,sharing:!!data.share,cardSubmitted:submitted.has(p.id),aiTool:data.aiTool||null,
+      answeredBefore:data.before!=null,answeredAfter:data.after!=null||data.biggestChange!=null,sharing:!!data.share,cardSubmitted:submitted.has(p.id),aiTool:data.aiTool||null,
       finished:data.progress===9,needsAttention,recent};
   });
   return {connected:participants.filter(p=>p.connected).length,recent:participants.filter(p=>p.recent).length,waiting:participants.filter(p=>p.waitingForPhase!==null).length,

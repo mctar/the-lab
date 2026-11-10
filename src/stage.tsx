@@ -1,5 +1,5 @@
 import React,{useEffect,useRef,useState,type CSSProperties} from 'react';
-import {INSTRUCTION_EASE,SCALE,WORKSHOP_NAME,hasTimer,type Card,type Snapshot} from '../server/model';
+import {CHANGE_CHOICES,CHANGE_QUESTION,INSTRUCTION_EASE,SCALE,WORKSHOP_NAME,hasTimer,revisedFlow,type Card,type Snapshot} from '../server/model';
 import {pairedMovement} from './stage-data';
 import {RoundClock} from './round-clock';
 import {stageCue,STAGE_STEPS,WORKSHOP_BRIEF,WORKSHOP_PROMPT_LABEL} from './workshop-flow';
@@ -99,6 +99,57 @@ function Reflections({snapshot}:{snapshot:Snapshot}){
   return <div className="play-reflections">{groups.map((group,g)=><section key={group.title}><p className="play-eyebrow">{g===0?'THE PLAN MET THE BRICKS':'THE HUMAN PART'}</p><h2>{group.title}</h2><div className="reflection-stacks">{group.labels.map((label,i)=>{const n=group.counts[label]||0,maximum=Math.max(1,...Object.values(group.counts));return <div className="reflection-choice" key={label} style={styleVars({'--reflection-color':COLORS[i]})}><div className="reflection-bar"><i style={{height:`${n/maximum*100}%`}}>{Array.from({length:4},(_,j)=><span key={j}/>)}</i><strong><Count value={n}/></strong></div><h3>{label}</h3></div>;})}</div><p className="reflection-total">{Object.values(group.counts).reduce((a,b)=>a+b,0)} / {snapshot.total} answered</p></section>)}</div>;
 }
 
+function IdeaTiles({title,cards,index,limit}:{title:string;cards:Card[];index:number;limit:number}){
+  const grouped=new Map<string,{title:string;count:number}>();
+  for(const card of cards){
+    const key=card.title.trim().replace(/\s+/g,' ').toLowerCase();
+    const idea=grouped.get(key);
+    if(idea)idea.count++;
+    else grouped.set(key,{title:card.title,count:1});
+  }
+  const ideas=[...grouped.values()].sort((a,b)=>b.count-a.count);
+  const pages=Math.max(1,Math.ceil(ideas.length/limit)),page=index%pages;
+  return <section className="idea-tiles">
+    <div className="play-section-heading"><h2>{title}</h2><span>{cards.length} shared{pages>1?` · ${page+1}/${pages}`:''}</span></div>
+    {ideas.length?<ul>{ideas.slice(page*limit,(page+1)*limit).map(idea=><li key={idea.title}>
+      <span>{idea.title}</span>{idea.count>1&&<b aria-label={`${idea.count} submissions`}>×{idea.count}</b>}
+    </li>)}</ul>:<p className="idea-empty">Nothing shared here yet.</p>}
+  </section>;
+}
+
+function IdeaWall({snapshot,compare}:{snapshot:Snapshot;compare:boolean}){
+  const [index,setIndex]=useState(0);
+  const {first=[],final=[],pairs=[]}=snapshot.ideas||{};
+  useEffect(()=>{
+    const timer=setInterval(()=>setIndex(i=>i+1),12000);
+    return()=>clearInterval(timer);
+  },[]);
+  if(snapshot.session.galleryPaused)return <p className="idea-empty">The reveal is paused.</p>;
+  const pair=pairs[index%pairs.length];
+  return <div className={`idea-wall${compare?' comparing':''}`}>
+    <div className="idea-columns">
+      <IdeaTiles title="AI’s first suggestions" cards={first} index={index} limit={compare?6:12}/>
+      {compare&&<IdeaTiles title="Final concept cards" cards={final} index={index} limit={6}/>}
+    </div>
+    {compare&&<div className="idea-pair">
+      <p className="play-eyebrow">{pairs.length} {pairs.length===1?'person shared':'people shared'} both</p>
+      {pair&&<div key={pair.id}><strong>{pair.first}</strong><span aria-hidden="true">→</span><strong>{pair.final}</strong></div>}
+      {pair&&<p className="idea-pair-description">{pair.description}</p>}
+    </div>}
+  </div>;
+}
+
+function ClosingChanges({snapshot}:{snapshot:Snapshot}){
+  const counts=snapshot.biggestChange||{}, maximum=Math.max(1,...Object.values(counts));
+  const answered=Object.values(counts).reduce((sum,n)=>sum+n,0);
+  return <section className="change-results">
+    <div className="play-section-heading"><h2>{CHANGE_QUESTION}</h2><span>{answered} / {snapshot.total} answered</span></div>
+    <ul>{CHANGE_CHOICES.map((label,i)=><li key={label}>
+      <span>{label}</span><div aria-hidden="true"><i style={{width:`${(counts[label]||0)/maximum*100}%`,background:COLORS[i%COLORS.length]}}/></div><strong>{counts[label]||0}</strong>
+    </li>)}</ul>
+  </section>;
+}
+
 export function StageScreen({snapshot,connected,error,qr,joinUrl,photo}:StageProps){
   const s=snapshot.session,cue=stageCue(s),view=s.stageView,lobby=s.phase<0&&!s.closed;
   const {enabled:motion,paused:motionPaused,forced:reducedMotion,toggle}=useMotion();
@@ -110,23 +161,26 @@ export function StageScreen({snapshot,connected,error,qr,joinUrl,photo}:StagePro
   const showSpotlight=!s.galleryPaused&&snapshot.gallery.length>0;
   const timed=hasTimer(s)&&!s.closed;
   const gettingPlan=s.phase===0&&!s.closed;
+  const sideClock=timed&&!gettingPlan;
+  const title=view==='first-ideas'?'What did the AI suggest?':view==='comparison'?'What did we change?':cue.title;
   return <div className={`play-stage stage-scene-${lobby?'lobby':view}`} data-motion={motion?'on':'off'}>
     <div className="play-background" aria-hidden="true"><Brick color={COLORS[0]}/><Brick color={COLORS[1]}/><Brick color={COLORS[2]}/></div>
     <header className="play-header"><div className="play-brand"><span className="brand-brick"><i/><i/></span><b>{WORKSHOP_NAME}</b>{rehearsal&&<span className="rehearsal-tag">DRY RUN</span>}</div><div className={'play-live'+(!connected||error?' reconnecting':'')} role="status"><i/>{connected&&!error?'LIVE':'RECONNECTING'}</div></header>
     <div className="play-title-row cue-title-row">
-      <div><p className="cue-kicker">{s.closed?'Workshop complete':`${cue.step+1} / ${STAGE_STEPS.length} · ${STAGE_STEPS[cue.step]}`}</p><h1>{cue.title}</h1>{!lobby&&view!=='overview'&&<p className="cue-reminder">{cue.steps[0]}</p>}</div>
-      {!lobby&&view!=='overview'&&<RoundClock session={s} compact/>}
+      <div><p className="cue-kicker">{s.closed?'Workshop complete':`${cue.step+1} / ${STAGE_STEPS.length} · ${STAGE_STEPS[cue.step]}`}</p><h1>{title}</h1>{!lobby&&view!=='overview'&&<p className="cue-reminder">{view==='first-ideas'?'Look for patterns in the ideas people chose to share.':view==='comparison'?'What changed, and what prompted that decision?':cue.steps[0]}</p>}</div>
+      {!lobby&&(view!=='overview'||gettingPlan)&&<RoundClock session={s} compact/>}
     </div>
     <main className="play-content">
       {lobby?<div className="stage-join">
         <div className="stage-join-copy"><h2>Scan with your phone</h2><p>Have your loose bricks and your AI app ready.</p><div className={'room-counter'+(joinBurst?' new-builder':'')}><strong><Count value={snapshot.total}/></strong><span>JOINED THE WORKSHOP</span></div></div>
         <div className="welcome-join"><a href={joinUrl} className="large-join-qr">{qr}</a><p>Or enter this room code</p><strong>{s.code}</strong></div>
-      </div>:view==='results'?<Movement snapshot={snapshot} motion={motion}/>:
+      </div>:view==='first-ideas'||view==='comparison'?<IdeaWall key={view} snapshot={snapshot} compare={view==='comparison'}/>:
+        view==='results'?(revisedFlow(s)?<ClosingChanges snapshot={snapshot}/>:<Movement snapshot={snapshot} motion={motion}/>):
         view==='gallery'?<Gallery snapshot={snapshot} photo={photo}/>:
         view==='reflections'?<Reflections snapshot={snapshot}/>:
-        <div className={'cue-board'+(timed||showSpotlight?' has-side':'')}>
+        <div className={'cue-board'+(sideClock||showSpotlight?' has-side':'')}>
           <div className="cue-main"><ol>{cue.steps.map((line,index)=><li key={line} className={gettingPlan&&index===2?'cue-explanation':undefined}>{line}</li>)}</ol>{gettingPlan&&<div className="cue-brief"><span>{WORKSHOP_PROMPT_LABEL}</span><strong>{WORKSHOP_BRIEF}</strong></div>}</div>
-          {(timed||showSpotlight)&&<div className="cue-side"><RoundClock session={s}/>{showSpotlight&&<Spotlight cards={snapshot.gallery} paused={false} photo={photo}/>}</div>}
+          {(sideClock||showSpotlight)&&<div className="cue-side">{sideClock&&<RoundClock session={s}/>} {showSpotlight&&<Spotlight cards={snapshot.gallery} paused={false} photo={photo}/>}</div>}
         </div>}
     </main>
     <footer className="play-footer"><div className="phase-trail" aria-label="Session progress">{STAGE_STEPS.map((label,i)=><span key={label} className={cue.step===i?'current':cue.step>i?'past':''}><i>{i+1}</i><b>{label}</b></span>)}</div><div className="play-footer-actions"><button onClick={toggle} aria-pressed={motionPaused} disabled={reducedMotion}>{reducedMotion?'Reduced motion':motionPaused?'▶ Motion':'Ⅱ Motion'}</button><button onClick={()=>document.documentElement.requestFullscreen?.()}>⛶ Full screen</button><span className="stage-updated">Updated {new Date(snapshot.capturedAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</span></div></footer>

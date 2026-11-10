@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { CARD_PHASE, INSTRUCTION_EASE, PHASES, SCALE, WORKSHOP_NAME, hasTimer, participantLabel, type Answers, type Participant, type Session } from '../server/model';
+import { CARD_PHASE, CHANGE_CHOICES, CHANGE_QUESTION, FIRST_IDEA_LIMIT, INSTRUCTION_EASE, PHASES, SCALE, WORKSHOP_NAME, hasTimer, participantLabel, revisedFlow, type Answers, type Participant, type Session } from '../server/model';
 import { request, Workshop, photograph, type Identity } from './client';
 import { AIChoice } from './ai-choice';
 import { Button, Shell, useLive } from './ui';
@@ -16,6 +16,15 @@ Create a step-by-step visual build plan using the pieces in the photo. Include o
 
 function Poll({value,onChange,label}:{value:number|undefined;onChange:(value:number)=>void;label:string}){
   return <div className="brick-poll" role="group" aria-label={label}>{SCALE.map(([name,description],i)=><button type="button" key={name} aria-pressed={value===i} onClick={()=>onChange(i)}><strong>{description}</strong><span>{name}</span></button>)}</div>;
+}
+
+function PrivacyNotice(){
+  return <details className="brick-details">
+    <summary>Privacy and publication</summary>
+    <p>Gervi Labs stores what you submit to The Lab on its own server, Hugin. We use workshop activity and answers to run and document the session. Raw submissions are kept for up to 90 days after you join.</p>
+    <p>We use uploaded photos and images only to document this experiment. You choose separately which items to show in the room and which images may appear in the public write-up on gervilabs.com.</p>
+    <p>Approved images can appear while the write-up is online. To withdraw permission or ask about your data, contact <a href="mailto:human@gervi.ai">human@gervi.ai</a>.</p>
+  </details>;
 }
 
 export function Join(){
@@ -53,7 +62,9 @@ export function Join(){
     <form onSubmit={join}>
       {showCode?<label className="brick-field">Room code<input className="field" value={code} onChange={e=>setCode(e.target.value.toUpperCase())} autoComplete="off" autoCapitalize="characters" minLength={6} maxLength={12} required/></label>:<p className="brick-room-code">Room <strong>{code}</strong></p>}
       <AIChoice value={aiTool} onChange={setAiTool} disabled={busy}/>
-      <label className="brick-consent"><input type="checkbox" checked={share} onChange={e=>setShare(e.target.checked)}/><span>I give permission to share uploaded material in this app <small>You choose what to send.</small></span></label>
+      <label className="brick-consent"><input type="checkbox" checked={share} onChange={e=>setShare(e.target.checked)}/><span>Allow items I choose to share on the big screen <small>Public write-up permission is a separate choice.</small></span></label>
+      <p className="brick-lede">We store workshop submissions on our own server for up to 90 days. We use uploaded media only to document this experiment.</p>
+      <PrivacyNotice/>
       {error&&<p className="brick-error" role="alert">{error}</p>}
       <button className="pill solid brick-primary" disabled={busy}>{busy?'Joining…':'Join the workshop'}</button>
     </form>
@@ -128,6 +139,19 @@ function ShareButton({w,kind,disabled,onError}:{w:Workshop;kind:'build'|'concept
   </div>;
 }
 
+function WriteupChoice({w,kind,onError}:{w:Workshop;kind:'writeup-build'|'writeup-concept';onError:(message:string)=>void}){
+  const sent=kind==='writeup-build'?w.draft.buildWriteupSent:w.draft.conceptWriteupSent;
+  const pending=w.publishing(kind);
+  return <details className="brick-details">
+    <summary>{sent?'Photo approved for the public write-up':'Public write-up (optional)'}</summary>
+    <p>Give Gervi Labs permission to publish this image in the experiment write-up on gervilabs.com. This choice is separate from sharing in the room.</p>
+    <Button disabled={pending||sent||w.blocked} onClick={()=>void w.publish(kind,true).catch(e=>onError(e.message))}>
+      {pending?'Saving permission…':sent?'Permission saved':'Allow this image in the public write-up'}
+    </Button>
+    <p>To withdraw, use Session settings or email <a href="mailto:human@gervi.ai">human@gervi.ai</a>.</p>
+  </details>;
+}
+
 export function ParticipantApp({id}:{id:string}){
   const [workshop,setWorkshop]=useState<Workshop|null>(null),[,redraw]=useState(0),[error,setError]=useState('');
   useEffect(()=>{
@@ -149,12 +173,13 @@ export function ParticipantApp({id}:{id:string}){
   return error?<Shell><h1>Find your room</h1><p>{error}</p><a className="pill solid" href="#/join">Join a session</a></Shell>:workshop?<ParticipantFlow w={workshop}/>:<Shell><p>Opening your workshop…</p></Shell>;
 }
 
-const nextAfterWaiting:Partial<Record<number,number>>={3:4,5:6,6:7,7:8};
+const nextAfterWaiting:Partial<Record<number,number>>={2:4,3:4,5:6,6:7,7:8};
 
 function ParticipantFlow({w}:{w:Workshop}){
   const [notice,setNotice]=useState('');
   const online=useLive(w.identity.id,w.identity.token,()=>{void w.refresh().catch(()=>{});void w.flush();});
   const {draft:d,identity:{session:s,participant}}=w,a=d.answers;
+  const revised=revisedFlow(s);
   // Older drafts that were on the opening question can start by photographing their bricks.
   const step=d.step===1?2:d.step===3&&!d.pilePhoto?2:d.step;
   const next=nextAfterWaiting[step];
@@ -164,6 +189,7 @@ function ParticipantFlow({w}:{w:Workshop}){
   const phaseForStep=CARD_PHASE[step];
   const blockedPhase=phaseForStep>s.phase?phaseForStep:waitingFor!==null&&waitingFor>s.phase?waitingFor:null;
   const capture=step===5&&!d.buildCaptured;
+  const exchange=revised&&step===5&&d.buildCaptured&&s.phase===2&&s.exchange===true;
   const reflectWaiting=step===5&&d.buildCaptured&&!reflectionOpen;
   const ready=d.name.trim()!==''&&d.what.trim()!=='';
   const pageRef=useRef<HTMLElement>(null);
@@ -205,15 +231,22 @@ function ParticipantFlow({w}:{w:Workshop}){
     if(s.closed||w.reset)return;
     if(step===0&&a.aiTool&&s.phase>=0)move(2);
     else if(step===4&&s.phase>=2)move(5);
+    else if(exchange&&d.waitingForPhase!==3)w.edit({waitingForPhase:3});
     else if(next!==undefined&&waitingFor!==null&&waitingFor<=s.phase)move(next);
-  },[w,step,s.phase,s.closed,a.aiTool,next,waitingFor]);
+  },[w,step,s.phase,s.closed,a.aiTool,next,waitingFor,exchange,d.waitingForPhase]);
   useEffect(()=>{
     window.scrollTo(0,0);
     pageRef.current?.querySelector('h1')?.focus({preventScroll:true});
-  },[step,blockedPhase,capture,reflectWaiting]);
+  },[step,blockedPhase,capture,reflectWaiting,exchange]);
 
   let title:string,content:ReactNode;
   if(s.closed&&step!==9){title='Workshop complete';content=<p className="brick-lede">The session is closed. Your photos and draft are still on this phone.</p>;}
+  else if(exchange){
+    title='Show your neighbour';
+    content=<><p className="brick-lede">Show the person next to you what you built. Take one minute each to say what you would change and hear their idea.</p>
+      {d.decided&&<div className="brick-brief"><span>Your first change</span><strong>{d.decided}</strong></div>}
+      <p className="brick-note">When the facilitator opens the next round, take the idea you want to try back to your AI chat.</p></>;
+  }
   else if(blockedPhase!==null||reflectWaiting||step===0&&s.phase<0){
     const label=reflectWaiting?'Reflection':blockedPhase===null?'Get a build plan':PHASES[blockedPhase];
     title=step===0?'You’re in':'Your work is saved';
@@ -231,18 +264,30 @@ function ParticipantFlow({w}:{w:Workshop}){
     content=<><p className="brick-lede">{d.handedOff?'Follow the plan as far as you can. If a piece is missing, use the closest one.':WORKSHOP_BRIEF}</p><p className="brick-note">When the round ends, come back here to photograph what you built.</p></>;
   }else if(capture){
     title='Photograph your build';
-    content=<><p className="brick-lede">Take a photo of what you actually built. Unfinished builds count.</p><Photo value={d.buildPhoto} label="Your first build" onChange={buildPhoto=>w.edit({buildPhoto,buildSent:false})} disabled={w.publishing('build')}/>{d.buildPhoto&&<ShareButton w={w} kind="build" onError={setNotice}/>}<Button solid onClick={()=>w.edit({buildCaptured:true})}>{d.buildPhoto?'Keep photo and continue':'Continue without a photo'}</Button></>;
+    content=<><p className="brick-lede">Take a photo of what you actually built. Unfinished builds count.</p>
+      <Photo value={d.buildPhoto} label="Your first build" onChange={buildPhoto=>w.edit({buildPhoto,buildSent:false,buildWriteupSent:false})} disabled={w.publishing('build')||w.publishing('writeup-build')}/>
+      {d.buildPhoto&&<ShareButton w={w} kind="build" onError={setNotice}/>}
+      {revised&&d.buildPhoto&&<WriteupChoice w={w} kind="writeup-build" onError={setNotice}/>}
+      {revised&&d.handedOff&&!s.firstRevealed&&<div className="brick-first-idea">
+        <label className="brick-field">What did your AI suggest first? (optional)<input className="field" placeholder="A few words, e.g. A bridge for strangers" value={d.firstIdea} maxLength={FIRST_IDEA_LIMIT} onChange={e=>w.edit({firstIdea:e.target.value})}/></label>
+        <Button disabled={!d.firstIdea.trim()||d.firstIdea.trim()===d.firstIdeaSent||w.publishing('first-idea')||w.blocked} onClick={()=>void w.publish('first-idea',true).catch(e=>setNotice(e.message))}>
+          {w.publishing('first-idea')?'Saving first idea…':d.firstIdeaSent&&d.firstIdeaSent===d.firstIdea.trim()?'Shared for the reveal':'Share on the first-idea wall'}
+        </Button>
+      </div>}
+      <Button solid onClick={()=>w.edit({buildCaptured:true})}>{d.buildPhoto?'Keep photo and continue':'Continue without a photo'}</Button></>;
   }else if(step===5){
     title='Reflect on the first build';
     content=<><p className="brick-lede">Think about the idea you got and what happened when you tried it.</p>
-      <label className="brick-field">{REFLECTION_PROMPTS[0]}<input className="field" placeholder="One sentence is enough" value={d.aiConcept} maxLength={240} onChange={e=>w.edit({aiConcept:e.target.value})}/></label>
+      {revised&&<label className="brick-field">What would you change first?<input className="field" placeholder="A few words are enough" value={d.decided} maxLength={1000} onChange={e=>w.edit({decided:e.target.value})}/></label>}
+      {!revised&&<label className="brick-field">{REFLECTION_PROMPTS[0]}<input className="field" placeholder="One sentence is enough" value={d.aiConcept} maxLength={240} onChange={e=>w.edit({aiConcept:e.target.value})}/></label>}
       <fieldset className="brick-options"><legend>{REFLECTION_PROMPTS[1]}</legend><div>{INSTRUCTION_EASE.map(option=><button type="button" key={option} aria-pressed={a.instructionEase===option} onClick={()=>save({instructionEase:option})}>{option}</button>)}</div></fieldset>
-      <label className="brick-field">{REFLECTION_PROMPTS[2]}<textarea className="field" rows={2} value={d.decided} maxLength={1000} onChange={e=>w.edit({decided:e.target.value})}/></label>
+      {!revised&&<label className="brick-field">{REFLECTION_PROMPTS[2]}<textarea className="field" rows={2} value={d.decided} maxLength={1000} onChange={e=>w.edit({decided:e.target.value})}/></label>}
       <p className="brick-note">Your written notes stay on this phone.</p><Button solid onClick={()=>advance(6)}>Finish this reflection</Button>
       <button type="button" className="brick-text-button" onClick={()=>w.edit({buildCaptured:false})}>Review my build photo</button></>;
   }else if(step===6){
     title='Make it yours';
-    const prompt=`Help me take the concept from our earlier chat in a direction I choose.${d.aiConcept.trim()?' The starting idea: '+d.aiConcept.trim()+'.':''}${d.decided.trim()?' The first thing I want to change: '+d.decided.trim()+'.':''} Ask me who it should help and what experience I want to create. It could be a game, a ritual, an experience, or something else. Suggest options and let me choose.`;
+    const firstIdea=(revised?d.firstIdea:d.aiConcept).trim();
+    const prompt=`Help me take the concept from our earlier chat in a direction I choose.${firstIdea?' The starting idea: '+firstIdea+'.':''}${d.decided.trim()?' The first thing I want to change: '+d.decided.trim()+'.':''} Ask me who it should help and what experience I want to create. It could be a game, a ritual, an experience, or something else. Suggest options and let me choose.`;
     content=<><p className="brick-lede">Return to the same chat in {aiName}. Tell it what you want to change and develop the idea in your own direction.</p><p>You can turn it into a game, an experience, or anything else. You can leave your bricks as they are.</p>{d.decided&&<div className="brick-brief"><span>Your first change</span><strong>{d.decided}</strong></div>}<details className="brick-details"><summary>Stuck?</summary><p>Try this prompt in the same AI chat.</p><CopyPrompt text={prompt}/></details><Button solid onClick={()=>advance(7)}>My concept is ready</Button></>;
   }else if(step===7){
     title='Make a concept card';
@@ -250,27 +295,36 @@ function ParticipantFlow({w}:{w:Workshop}){
       <label className="brick-field">Concept name<input className="field" value={d.name} maxLength={100} onChange={e=>w.edit({name:e.target.value,sent:false})}/></label>
       <label className="brick-field">What is it?<textarea className="field" rows={2} value={d.what} maxLength={600} onChange={e=>w.edit({what:e.target.value,sent:false})}/></label>
       <details className="brick-details" open={d.conceptPhoto||d.mine?true:undefined}><summary>Add an image or a detail (optional)</summary>
-        <p>You can save an image from your AI chat and choose it from your camera roll.</p><Photo value={d.conceptPhoto} label="Concept image" onChange={conceptPhoto=>w.edit({conceptPhoto,sent:false})} disabled={w.publishing('concept')}/>
+        <p>You can save an image from your AI chat and choose it from your camera roll.</p><Photo value={d.conceptPhoto} label="Concept image" onChange={conceptPhoto=>w.edit({conceptPhoto,sent:false,conceptWriteupSent:false})} disabled={w.publishing('concept')||w.publishing('writeup-concept')}/>
         <label className="brick-field">What did you change?<input className="field" value={d.mine} maxLength={240} onChange={e=>w.edit({mine:e.target.value,sent:false})}/></label>
       </details>
       {ready&&<ShareButton w={w} kind="concept" onError={setNotice}/>}
+      {revised&&d.conceptPhoto&&<WriteupChoice w={w} kind="writeup-concept" onError={setNotice}/>}
       <Button solid onClick={()=>advance(8)}>{ready?'Save card and continue':'Continue to final reflection'}</Button></>;
   }else if(step===8){
     title='Final reflection';
-    content=<><p className="brick-lede">When did you follow the AI? When did you make the decisions? Share one thing you noticed with the room.</p><details className="brick-details"><summary>Optional closing question</summary><p>How did you work with AI in this exercise?</p><Poll label="How did you work with AI in this exercise?" value={a.after} onChange={after=>save({after})}/></details><Button solid onClick={()=>move(9)}>Finish workshop</Button></>;
+    content=<><p className="brick-lede">{revised?'Look at the first ideas and final cards on the big screen. What prompted a change?':'When did you follow the AI? When did you make the decisions? Share one thing you noticed with the room.'}</p>
+      <details className="brick-details"><summary>Optional closing question</summary><p>{revised?CHANGE_QUESTION:'How did you work with AI in this exercise?'}</p>
+        {revised?<div className="brick-poll" role="group" aria-label={CHANGE_QUESTION}>{CHANGE_CHOICES.map(choice=><button type="button" key={choice} aria-pressed={a.biggestChange===choice} onClick={()=>save({biggestChange:choice})}>{choice}</button>)}</div>
+          :<Poll label="How did you work with AI in this exercise?" value={a.after} onChange={after=>save({after})}/>}
+      </details><Button solid onClick={()=>move(9)}>Finish workshop</Button></>;
   }else{
     title='You made it yours';
     content=<><p className="brick-lede">Thanks for building.</p>{w.publishing('concept')&&<p className="brick-note" role="status">Your concept card is waiting to send.</p>}{ready&&<><article className="brick-concept-print"><h2>{d.name}</h2>{d.conceptPhoto&&<img src={d.conceptPhoto} alt={d.name}/>}<p>{d.what}</p>{d.mine&&<p>{d.mine}</p>}</article><Button onClick={()=>window.print()}>Print or save my card as PDF</Button></>}</>;
   }
 
   const milestone=step===0?0:step<=3?1:step===4?2:step===5?3:step<=7?4:5;
-  const showClock=step!==9&&s.phase>=1&&s.phase<=3;
+  const showClock=step!==9&&s.phase>=(revised?0:1)&&s.phase<=3;
   return <div className="brick-mobile">
-    <header className="brick-top"><strong>{WORKSHOP_NAME}</strong><span>{milestone+1} / {STAGE_STEPS.length} · {STAGE_STEPS[milestone]}</span><details className="session-menu"><summary aria-label="Session settings">•••</summary><div className="session-menu-panel"><p className="participant-reference">{participantLabel(participant.id)}</p><AIChoice value={a.aiTool} onChange={aiTool=>save({aiTool})} disabled={s.closed}/><label className="brick-consent"><input type="checkbox" checked={!!a.share} onChange={e=>save({share:e.target.checked})} disabled={s.closed&&!a.share}/><span>Allow sharing on the big screen</span></label><p className="small">Turning this off removes your builds and cards from the wall.</p></div></details></header>
+    <header className="brick-top"><strong>{WORKSHOP_NAME}</strong><span>{milestone+1} / {STAGE_STEPS.length} · {STAGE_STEPS[milestone]}</span><details className="session-menu"><summary aria-label="Session settings">•••</summary><div className="session-menu-panel"><p className="participant-reference">{participantLabel(participant.id)}</p><AIChoice value={a.aiTool} onChange={aiTool=>save({aiTool})} disabled={s.closed}/><label className="brick-consent"><input type="checkbox" checked={!!a.share} onChange={e=>save({share:e.target.checked})} disabled={s.closed&&!a.share}/><span>Allow sharing on the big screen</span></label><p className="small">Turning this off removes your contributions from the walls.</p>
+      {revised&&a.writeup&&<button className="brick-text-button" type="button" onClick={()=>save({writeup:false})}>Withdraw public write-up permission</button>}
+      {revised&&<PrivacyNotice/>}
+    </div></details></header>
     <main className="brick-pane" ref={pageRef}>
       <h1 tabIndex={-1}>{title}</h1>
       {showClock&&<RoundClock session={s}/>}
       {content}
+      {revised&&!s.closed&&step===2&&blockedPhase===null&&<button className="brick-text-button" type="button" onClick={()=>{w.edit({handedOff:false});advance(4);}}>Continue without a plan</button>}
       {!s.closed&&step===3&&phaseForStep<=s.phase&&<button className="brick-text-button" type="button" onClick={changePilePhoto}>Change photo</button>}
       {notice&&<p className="brick-error" role="alert">{notice}</p>}
       <div className="brick-save" role="status">{w.message||(w.jobs.length?'Saved on this phone · sending when connected':online?'Saved':'Saved on this phone')}{w.message&&<Button onClick={()=>void w.retry()}>{w.blocked?'Reconnect':'Retry now'}</Button>}</div>

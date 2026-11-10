@@ -45,3 +45,12 @@ ALTER TABLE participants ADD COLUMN IF NOT EXISTS client_status jsonb NOT NULL D
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS run integer NOT NULL DEFAULT 0;
 ALTER TABLE participants ADD COLUMN IF NOT EXISTS run integer NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS participant_session_run ON participants(session_id,run);
+-- Keep existing runs on their original flow and make public consent independent of room sharing.
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS flow_version integer NOT NULL DEFAULT 1;
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS first_revealed boolean NOT NULL DEFAULT false;
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS exchange boolean NOT NULL DEFAULT false;
+ALTER TABLE participants ADD COLUMN IF NOT EXISTS writeup_version integer NOT NULL DEFAULT 0;
+ALTER TABLE assets ADD COLUMN IF NOT EXISTS purpose text NOT NULL DEFAULT 'room';
+ALTER TABLE participants ADD COLUMN IF NOT EXISTS retain_until timestamptz;
+CREATE INDEX IF NOT EXISTS participant_retention ON participants(retain_until) WHERE retain_until IS NOT NULL;
+CREATE TABLE IF NOT EXISTS expired_photo_files (asset_id uuid PRIMARY KEY);

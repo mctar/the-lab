@@ -15,7 +15,7 @@ test('the six-step workshop gives the room time to capture, then starts one shar
     return {status:response.statusCode,data:response.json()};
   };
   try{
-    const room=(await call('POST','/v1/sessions','test-admin',{title:'Rebuilt rehearsal'})).data;
+    const room=(await call('POST','/v1/sessions','test-admin',{title:'Rebuilt rehearsal',flowVersion:1})).data;
     const root=`/v1/sessions/${room.id}`,joinKey=randomUUID();
     const joinResult=await call('POST','/v1/join','',{code:room.code,joinKey,aiTool:'Gemini',share:false});
     assert.equal(joinResult.status,200);
