@@ -1,39 +1,110 @@
-import { randomUUID } from 'node:crypto';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { randomBytes } from 'node:crypto';
+import {randomBytes,randomUUID} from 'node:crypto';
+import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import sharp from 'sharp';
-const api=process.env.API_URL||'http://127.0.0.1:4181',admin=process.env.ADMIN_TOKEN||(await readFile('.runtime/admin-token','utf8')).trim(),count=Number(process.env.USERS||400);
-const latencies:number[]=[],errors:string[]=[];
-async function call(path:string,token='',body?:unknown,method=body?'POST':'GET') {const start=performance.now();const res=await fetch(api+path,{method,headers:{...(token?{Authorization:'Bearer '+token}:{}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});latencies.push(performance.now()-start);const data=await res.json();if(!res.ok){errors.push(res.status+': '+data.error);throw new Error(data.error);}return data;}
-const session=await call('/v1/sessions',admin,{title:'LOAD TEST — '+new Date().toISOString()}),root='/v1/sessions/'+session.id;
-const clients=await Promise.all(Array.from({length:count},()=>call('/v1/join','',{code:session.code,joinKey:randomUUID()})));
-const abort=new AbortController();let liveConnections=0;
-const streams=clients.map(async c=>{const r=await fetch(api+root+'/events',{headers:{Authorization:'Bearer '+c.token},signal:abort.signal});if(!r.ok)throw new Error('SSE '+r.status);liveConnections++;const reader=r.body!.getReader();try{while(!(await reader.read()).done){}}catch{}});
-await call(root+'/control',session.hostToken,{expectedRevision:0,phase:0},'PATCH');
-await Promise.all(clients.map((c,i)=>call(root+'/me',c.token,{operationId:randomUUID(),expectedRevision:0,patch:{before:i%3,share:true}},'PATCH')));
-const activity={step:1,visibility:'visible',pendingSaves:0,syncStatus:'saved',waitingForPhase:1,photos:{pile:false,build:false,concept:false},handedOff:false,cardReady:false};
-await Promise.all(clients.map(c=>call(root+'/telemetry',c.token,activity)));
-const waitingSnapshot=await call(root+'/snapshot',session.hostToken);
-await call(root+'/control',session.hostToken,{expectedRevision:1,phase:5},'PATCH');
-await Promise.all(clients.map((c,i)=>call(root+'/me',c.token,{operationId:randomUUID(),expectedRevision:1,patch:{after:(i+1)%3,progress:9}},'PATCH')));
-await Promise.all(clients.map(c=>call(root+'/telemetry',c.token,{...activity,step:9,waitingForPhase:null})));
-const finishedSnapshot=await call(root+'/snapshot',session.hostToken);
-const snapshot=await call(root+'/snapshot',session.stageToken);
-let photoSuccess=0,photoRetries=0;
-const photoCount=Math.min(count,Number(process.env.PHOTOS||0));
-if(photoCount){
-  const image=await sharp(randomBytes(900*900*3),{raw:{width:900,height:900,channels:3}}).jpeg({quality:78}).toBuffer();
-  await Promise.all(clients.slice(0,photoCount).map(async(c,i)=>{
-    for(let attempt=0;attempt<30;attempt++){
-      const form=new FormData();form.append('photo',new Blob([new Uint8Array(image)],{type:'image/jpeg'}),'test.jpg');
-      const res=await fetch(api+root+'/photos?consentVersion=1',{method:'POST',headers:{Authorization:'Bearer '+c.token},body:form});
-      if(res.status===503||res.status===429){photoRetries++;await res.text();await new Promise(r=>setTimeout(r,1200+Math.random()*2500));continue;}
-      const result=await res.json();if(!res.ok)throw new Error('Photo: '+JSON.stringify(result));
-      await call(root+'/cards',c.token,{operationId:randomUUID(),expectedRevision:2,consentVersion:1,kind:'build',title:'Load-test build '+(i+1),assetId:result.assetId});photoSuccess++;return;
-    }throw new Error('Photo retries exhausted');
-  }));
+import {CURRENT_FLOW_VERSION,type Answers,type CardKind,type Session,type Snapshot} from '../server/model.js';
+
+const api=process.env.API_URL||'http://127.0.0.1:4181';
+const admin=process.env.ADMIN_TOKEN||(await readFile('.runtime/admin-token','utf8')).trim();
+const count=Number(process.env.USERS||400);
+const largePhotoCount=Math.min(count,Number(process.env.PHOTOS||0));
+if(!Number.isInteger(count)||count<1||!Number.isInteger(largePhotoCount)||largePhotoCount<0)throw new Error('Set USERS and PHOTOS to valid counts.');
+const latencies:number[]=[];
+let photoRetries=0,photoSuccess=0,liveConnections=0;
+
+async function call<T>(path:string,token='',body?:unknown,method=body?'POST':'GET'){
+  const start=performance.now();
+  const response=await fetch(api+path,{method,headers:{...(token?{Authorization:'Bearer '+token}:{}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
+  latencies.push(performance.now()-start);
+  if(!response.ok)throw new Error(`${response.status} ${path}: ${(await response.json()).error}`);
+  return await response.json() as T;
 }
-abort.abort();await Promise.allSettled(streams);
-await call(root+'/control',session.hostToken,{expectedRevision:2,closed:true},'PATCH');
-latencies.sort((a,b)=>a-b);const report={at:new Date().toISOString(),api,users:count,liveConnections,requests:latencies.length,errors,total:snapshot.total,paired:snapshot.paired,telemetry:{connected:waitingSnapshot.telemetry.connected,waiting:waitingSnapshot.telemetry.waiting,finished:finishedSnapshot.telemetry.finished},photoCount,photoSuccess,photoRetries,p50Ms:Math.round(latencies[Math.floor(latencies.length*.5)]),p95Ms:Math.round(latencies[Math.floor(latencies.length*.95)]),maxMs:Math.round(latencies.at(-1)!)};
-const reportDirectory=process.env.REPORT_DIRECTORY||'.runtime';await mkdir(reportDirectory,{recursive:true});await writeFile(reportDirectory+'/load-report.json',JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));if(errors.length||snapshot.total!==count||snapshot.paired!==count||liveConnections!==count||photoSuccess!==photoCount||report.telemetry.connected!==count||report.telemetry.waiting!==count||report.telemetry.finished!==count)process.exitCode=1;
+
+const room=await call<{id:string;code:string;hostToken:string;stageToken:string}>('/v1/sessions',admin,{title:'LOAD TEST — '+new Date().toISOString(),flowVersion:CURRENT_FLOW_VERSION});
+const root='/v1/sessions/'+room.id,abort=new AbortController();
+let hostRevision=0;
+const streams:Promise<void>[]=[];
+async function control(patch:Record<string,unknown>){
+  const state=await call<Session>(root+'/control',room.hostToken,{expectedRevision:hostRevision,...patch},'PATCH');
+  hostRevision=state.revision;
+}
+type Client={token:string;revision:number;index:number};
+async function save(client:Client,patch:Answers){
+  const person=await call<{revision:number}>(root+'/me',client.token,{operationId:randomUUID(),expectedRevision:client.revision,patch},'PATCH');
+  client.revision=person.revision;
+}
+const small=await sharp({create:{width:64,height:64,channels:3,background:'#83c9ff'}}).jpeg().toBuffer();
+const large=largePhotoCount?await sharp(randomBytes(900*900*3),{raw:{width:900,height:900,channels:3}}).jpeg({quality:78}).toBuffer():small;
+async function submit(client:Client,kind:CardKind,fields:Record<string,string>){
+  for(let attempt=0;attempt<40;attempt++){
+    const form=new FormData(),image=client.index<largePhotoCount?large:small;
+    form.append('photo',new Blob([new Uint8Array(image)],{type:'image/jpeg'}),'test.jpg');
+    const response=await fetch(api+root+'/photos?consentVersion=0&purpose=workshop',{method:'POST',headers:{Authorization:'Bearer '+client.token},body:form});
+    const data=await response.json();
+    if(response.status===429||response.status===503){
+      photoRetries++;
+      await new Promise(resolve=>setTimeout(resolve,1500+Math.random()*2500));
+      continue;
+    }
+    if(!response.ok)throw new Error('Photo: '+data.error);
+    await call(root+'/cards',client.token,{operationId:randomUUID(),expectedRevision:client.revision,consentVersion:0,kind,assetId:data.assetId,...fields});
+    photoSuccess++;
+    return;
+  }
+  throw new Error('Photo retries exhausted.');
+}
+
+try{
+  const clients=await Promise.all(Array.from({length:count},async(_,index)=>{
+    const joined=await call<{token:string}>('/v1/join','',{code:room.code,joinKey:randomUUID(),aiTool:'Gemini',share:index%2===0,writeup:false});
+    return {token:joined.token,revision:0,index};
+  }));
+  await Promise.all(clients.map(async client=>{
+    const response=await fetch(api+root+'/events',{headers:{Authorization:'Bearer '+client.token},signal:abort.signal});
+    if(!response.ok)throw new Error('SSE '+response.status);
+    liveConnections++;
+    const reader=response.body!.getReader();
+    streams.push((async()=>{try{while(!(await reader.read()).done){}}catch(error){if(!abort.signal.aborted)throw error;}})());
+  }));
+  await control({phase:0});
+  await Promise.all(clients.map(async client=>{
+    await submit(client,'first-idea',{title:'A bridge'});
+    await save(client,{handoff:'ready',progress:3});
+  }));
+  const activity={step:3,visibility:'visible',pendingSaves:0,syncStatus:'saved',waitingForPhase:1,photos:{pile:true,build:false,concept:false},handedOff:true,cardReady:false};
+  await Promise.all(clients.map(client=>call(root+'/telemetry',client.token,activity)));
+  const waiting=await call<Snapshot>(root+'/snapshot',room.hostToken);
+  await control({phase:1});
+  await control({phase:2});
+  await Promise.all(clients.map(client=>submit(client,'build',{title:'First build'})));
+  await control({stageView:'first-ideas'});
+  const first=await call<Snapshot>(root+'/snapshot',room.stageToken);
+  await control({stageView:'overview',timer:'reset'});
+  await Promise.all(clients.map(client=>save(client,{progress:5,instructionEase:'Easy',ideaLiking:'A lot'})));
+  await control({exchange:true});
+  await control({phase:3});
+  await Promise.all(clients.map(client=>save(client,{progress:6})));
+  await control({phase:4});
+  await Promise.all(clients.map(client=>submit(client,'concept',{title:'Neighbour relay',description:'A game for two people.',mine:'I added turns.'})));
+  await control({phase:5});
+  await Promise.all(clients.map(client=>save(client,{progress:9,biggestChange:'What people would do'})));
+  await Promise.all(clients.map(client=>call(root+'/telemetry',client.token,{...activity,step:9,waitingForPhase:null,cardReady:true,photos:{pile:true,build:true,concept:true}})));
+  const finished=await call<Snapshot>(root+'/snapshot',room.hostToken);
+  const stage=await call<Snapshot>(root+'/snapshot',room.stageToken);
+  latencies.sort((a,b)=>a-b);
+  const report={at:new Date().toISOString(),api,users:count,liveConnections,requests:latencies.length,
+    ready:waiting.collection?.instructions,waiting:waiting.telemetry?.waiting,finished:finished.telemetry?.finished,
+    photoSuccess,photoRetries,largePhotoCount,firstPairs:first.ideas?.firstBuilds?.length,finalPairs:stage.ideas?.comparisons?.length,
+    closingVotes:stage.biggestChange?.['What people would do'],
+    p50Ms:Math.round(latencies[Math.floor(latencies.length*.5)]),p95Ms:Math.round(latencies[Math.floor(latencies.length*.95)])};
+  const reportDirectory=process.env.REPORT_DIRECTORY||'.runtime';
+  await mkdir(reportDirectory,{recursive:true});
+  await writeFile(reportDirectory+'/load-report.json',JSON.stringify(report,null,2));
+  console.log(JSON.stringify(report,null,2));
+  const shared=Math.ceil(count/2);
+  if([report.ready,report.waiting,report.finished,report.closingVotes,liveConnections].some(n=>n!==count)||
+     report.firstPairs!==shared||report.finalPairs!==shared||photoSuccess!==count*3)process.exitCode=1;
+}finally{
+  abort.abort();
+  await Promise.allSettled(streams);
+  await control({closed:true});
+}

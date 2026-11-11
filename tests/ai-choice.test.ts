@@ -11,7 +11,7 @@ test('AI choices save in the lobby, can change, remain host-only, and export wit
   const app=await createApp({dataDir:dir,adminToken:'test-admin',origins:[]});
   const call=async(method:any,url:string,token='',payload?:any)=>{const r=await app.inject({method,url,headers:token?{authorization:'Bearer '+token}:{},payload});return {status:r.statusCode,data:r.json()};};
   try{
-    const s=(await call('POST','/v1/sessions','test-admin',{title:'AI choice test'})).data,root='/v1/sessions/'+s.id;
+    const s=(await call('POST','/v1/sessions','test-admin',{title:'AI choice test',flowVersion:2})).data,root='/v1/sessions/'+s.id;
     const p=(await call('POST','/v1/join','',{code:s.code,joinKey:randomUUID()})).data;
     const legacy=(await call('POST','/v1/join','',{code:s.code,joinKey:randomUUID()})).data;
     const tools=['ChatGPT','Gemini','Claude','Copilot','Something else'];

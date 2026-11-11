@@ -1,4 +1,4 @@
-import {useEffect,useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import QRCode from 'qrcode';
 import {CHANGE_CHOICES,CHANGE_QUESTION,PHASES,SCALE,WORKSHOP_NAME,hasTimer,revisedFlow,roundMinutes,type Snapshot,type Card,type PublicationPhoto} from '../server/model';
@@ -10,7 +10,7 @@ import {ResetSession} from './reset-session';
 import {Join,ParticipantApp} from './participant';
 import {Button,Shell,useLive} from './ui';
 import {RoundClock} from './round-clock';
-import {stageCue} from './workshop-flow';
+import {IDEA_LIKING_QUESTION,REFLECTION_PROMPTS,stageCue} from './workshop-flow';
 import './prototype.css';
 import './style.css';
 
@@ -24,9 +24,17 @@ function QR({url}:{url:string}){
   return src?<img className="qr" src={src} alt="QR code to join this session"/>:null;
 }
 
-function ProtectedPhoto({id,token,asset,alt,full=false}:{id:string;token:string;asset:string;alt:string;full?:boolean}){
-  const [url,setUrl]=useState('');
+function ProtectedPhoto({id,token,asset,alt,full=false,lazy=false}:{id:string;token:string;asset:string;alt:string;full?:boolean;lazy?:boolean}){
+  const [url,setUrl]=useState(''),[visible,setVisible]=useState(!lazy);
+  const placeholder=useRef<HTMLDivElement>(null);
   useEffect(()=>{
+    if(visible||!placeholder.current)return;
+    const observer=new IntersectionObserver(([entry])=>{if(entry.isIntersecting)setVisible(true);},{rootMargin:'200px'});
+    observer.observe(placeholder.current);
+    return()=>observer.disconnect();
+  },[visible]);
+  useEffect(()=>{
+    if(!visible)return;
     const abort=new AbortController();let object='',timer:ReturnType<typeof setTimeout>|undefined,attempts=0;
     async function load(){
       try{const response=await fetch(API+`/v1/sessions/${id}/assets/${asset}${full?'?full=1':''}`,{headers:{Authorization:'Bearer '+token},signal:abort.signal});
@@ -36,11 +44,11 @@ function ProtectedPhoto({id,token,asset,alt,full=false}:{id:string;token:string;
       }catch{if(!abort.signal.aborted&&++attempts<5)timer=setTimeout(()=>void load(),2000+Math.random()*2000);}
     }
     void load();return()=>{abort.abort();clearTimeout(timer);if(object)URL.revokeObjectURL(object);};
-  },[id,token,asset,full]);
-  return url?<img src={url} alt={alt}/>:<div className="image-placeholder">Your idea, made real.</div>;
+  },[id,token,asset,full,visible]);
+  return url?<img src={url} alt={alt}/>:<div ref={placeholder} className="image-placeholder">Loading image…</div>;
 }
 function Distribution({label,counts,total,color}:{label:string;counts:number[];total:number;color:string}){const sum=counts.reduce((a,b)=>a+b,0);return <section className="distribution"><div className="distribution-head"><h2>{label}</h2><span>{sum} / {total} answered</span></div><div className="category-grid">{counts.map((n,i)=><div key={i}><div className="dot-field">{Array.from({length:n},(_,j)=><i key={j} style={{background:color,width:n>200?4:n>80?6:9,height:n>200?4:n>80?6:9}}/>)}</div><strong>{SCALE[i][0]}</strong><span className="category-count">{n}</span></div>)}</div></section>;}
-function GalleryCard({card,id,token,hide}:{card:Card;id:string;token:string;hide:()=>void}){return <article className={'gallery-card'+(card.hidden?' hidden-card':'')}>{card.assetId&&<ProtectedPhoto id={id} token={token} asset={card.assetId} alt={card.title}/>}<div className="gallery-copy"><p className="small">{card.kind==='build'?'FIRST BUILD':'CONCEPT CARD'}</p><h3>{card.title||'A build from the room'}</h3>{card.description&&<p>{card.description}</p>}{card.mine&&<p className="contribution">{card.mine}</p>}<Button onClick={hide}>{card.hidden?'Restore to wall':'Hide from wall'}</Button></div></article>;}
+function GalleryCard({card,id,token,hide}:{card:Card;id:string;token:string;hide:()=>void}){return <article className={'gallery-card'+(card.hidden?' hidden-card':'')}>{card.assetId&&<ProtectedPhoto key={card.assetId} id={id} token={token} asset={card.assetId} alt={card.title} lazy/>}<div className="gallery-copy"><p className="small">{card.kind==='first-idea'?'ORIGINAL AI IDEA':card.kind==='build'?'FIRST BUILD':'CONCEPT CARD'}</p><h3>{card.title||'A build from the room'}</h3>{card.description&&<p>{card.description}</p>}{card.mine&&<p className="contribution">{card.mine}</p>}<Button onClick={hide}>{card.hidden?'Restore to wall':'Hide from wall'}</Button></div></article>;}
 
 function PairedResults({snapshot}:{snapshot:Snapshot}){
   return <div className="transitions"><h2>How people moved <small>{snapshot.paired} paired answers</small></h2><table><caption>Rows: opening question. Columns: closing question.</caption><thead><tr><th>From / to</th>{SCALE.map(([label])=><th key={label}>{label}</th>)}</tr></thead><tbody>{snapshot.transitions.map((row,i)=><tr key={i}><th>{SCALE[i][0]}</th>{row.map((n,j)=><td key={j} style={{background:`rgba(230,83,185,${.08+.6*n/snapshot.paired})`}}>{n}</td>)}</tr>)}</tbody></table></div>;
@@ -74,7 +82,7 @@ function Staff({id,role,token}:{id:string;role:'host'|'stage';token:string}){
   }
   async function downloadPublication(photo:PublicationPhoto){
     try{
-      const response=await fetch(API+`/v1/sessions/${id}/assets/${photo.assetId}?full=1`,{headers:{Authorization:'Bearer '+token}});
+      const response=await fetch(API+`/v1/sessions/${id}/assets/${photo.assetId}?full=1&publication=1`,{headers:{Authorization:'Bearer '+token}});
       if(!response.ok)throw new Error('This image is no longer available for the write-up.');
       const url=URL.createObjectURL(await response.blob());
       const link=document.createElement('a');link.href=url;link.download=`the-lab-${photo.assetId}.jpg`;link.click();URL.revokeObjectURL(url);
@@ -92,10 +100,11 @@ function Staff({id,role,token}:{id:string;role:'host'|'stage';token:string}){
   if(!host)return <StageScreen key={s.run} snapshot={snapshot} connected={connected} error={error} joinUrl={joinUrl} qr={<QR url={joinUrl}/>} photo={(card,full)=><ProtectedPhoto key={card.assetId} id={id} token={token} asset={card.assetId!} alt={card.title||'A build from the room'} full={full}/>}/>;
 
   const capturing=s.phase===2&&!hasTimer(s);
-  const revised=revisedFlow(s),firstIdeas=snapshot.ideas?.first||[];
+  const revised=revisedFlow(s),firstIdeas=snapshot.ideas?.first||[],collection=snapshot.collection;
   const people=snapshot.telemetry?.participants||[];
-  const ready=people.filter(person=>person.handedOff&&person.waitingForPhase===1).length;
-  const skipping=people.filter(person=>person.handedOff===false&&person.waitingForPhase===1).length;
+  const ready=collection?.instructions??people.filter(person=>person.handedOff&&person.waitingForPhase===1).length;
+  const skipping=collection?.noPlan??people.filter(person=>person.handedOff===false&&person.waitingForPhase===1).length;
+  const closingVotes=Object.values(snapshot.biggestChange||{}).reduce((sum,n)=>sum+n,0);
   const next=capturing
     ? revised&&!s.firstRevealed
       ? {label:'Reveal first ideas',patch:{stageView:'first-ideas'}}
@@ -116,34 +125,35 @@ function Staff({id,role,token}:{id:string;role:'host'|'stage';token:string}){
         <ol>{cue.steps.map(line=><li key={line}>{line}</li>)}</ol>
         <RoundClock session={s} compact/>
         {hasTimer(s)&&!s.closed&&<div className="row"><Button disabled={busy} onClick={()=>void control({timer:s.remainingMs!==null?'resume':'pause'})}>{s.remainingMs!==null?'Resume timer':'Pause timer'}</Button><Button disabled={busy} onClick={()=>void control({timer:'extend'})}>+1 minute</Button>{roundMinutes(s)&&<Button disabled={busy} onClick={()=>void control({timer:'reset'})}>Restart timer</Button>}</div>}
-        {revised&&s.phase===0&&<p role="status"><strong>{ready} of {snapshot.total} have instructions</strong> · {skipping} ready to build without a plan</p>}
-        {revised&&capturing&&<p role="status">{firstIdeas.filter(card=>!card.hidden).length} first ideas ready to reveal</p>}
+        {revised&&s.phase===0&&<><p role="status"><strong>{ready} of {snapshot.total} have instructions</strong> · {skipping} reported no plan</p>{collection&&<p>While the room waits, explain that plans may miscount bricks. Ask everyone to build what they can.</p>}</>}
+        {revised&&capturing&&<p role="status">{collection?`${collection.builds} of ${snapshot.total} build photos saved · ${collection.firstIdeas} original ideas saved`:`${firstIdeas.filter(card=>!card.hidden).length} first ideas ready to reveal`}</p>}
+        {collection&&s.phase===4&&<p role="status">{collection.concepts} of {snapshot.total} concept cards saved</p>}
+        {collection&&s.phase===5&&<p role="status">{closingVotes} of {snapshot.total} closing votes saved</p>}
         {next&&!s.closed&&<Button solid disabled={busy} onClick={()=>void control(next.patch)}>{next.label}</Button>}
         <details><summary>Jump to a phase</summary><div className="phase-buttons">{PHASES.map((label,i)=><button type="button" key={label} disabled={busy||s.closed} className={s.phase===i?'active':''} onClick={()=>void control({phase:i})}><span>{i+1}</span>{label}</button>)}</div></details>
       </section>
       <section className="control-panel"><h2>On the big screen</h2>
         <p>Use Instructions to guide the room.</p>
-        <div className="row">{stageViews.map(([value,label])=><Button key={value} disabled={busy} solid={s.stageView===value} onClick={()=>void control({stageView:value})}>{label}</Button>)}
+        <div className="row">{stageViews.filter(([value])=>!collection||value!=='results'||s.phase===5).map(([value,label])=><Button key={value} disabled={busy} solid={s.stageView===value} onClick={()=>void control({stageView:value})}>{label}</Button>)}
           {revised&&s.firstRevealed&&s.phase>=2&&<Button disabled={busy} solid={s.stageView==='first-ideas'} onClick={()=>void control({stageView:'first-ideas'})}>First ideas</Button>}
           {revised&&s.phase===5&&<Button disabled={busy} solid={s.stageView==='comparison'} onClick={()=>void control({stageView:'comparison'})}>Compare ideas</Button>}
+          {collection&&s.phase===5&&!s.closed&&<Button disabled={busy} solid={s.stageView==='final-exchange'} onClick={()=>void control({stageView:'final-exchange'})}>Final neighbour exchange · 2 min</Button>}
         </div>
         <div className="row"><Button disabled={busy} onClick={()=>void control({galleryPaused:!s.galleryPaused})}>{s.galleryPaused?'Resume gallery':'Pause gallery'}</Button><Button onClick={()=>void exportResults()}>Export results</Button></div>
         <details><summary>Session status</summary><p>Closing stops new joins and submissions. Participants keep their drafts.</p><Button disabled={busy} onClick={()=>void control({closed:!s.closed})}>{s.closed?'Reopen session':'Close session'}</Button></details>
       </section>
     </div>
-    <ResetSession session={s} participants={snapshot.total} cards={cards.length+firstIdeas.length+(snapshot.publication?.length||0)} token={token} onReset={refresh}/>
+    <ResetSession session={s} participants={snapshot.total} cards={collection?collection.firstIdeas+collection.builds+collection.concepts:cards.length+firstIdeas.length+(snapshot.publication?.length||0)} token={token} onReset={refresh}/>
     <FacilitatorTelemetry key={s.run} snapshot={snapshot}/>
     <div className="join-banner"><QR url={joinUrl}/><div><h2>Join the workshop</h2><a href={joinUrl}>Participant join link</a><p>Share this link or show the QR on the big screen.</p></div></div>
     {revised?<div className="reflection-results"><section><h2>{CHANGE_QUESTION}</h2>{CHANGE_CHOICES.map(choice=><div className="result-row" key={choice}>
       <span>{choice}</span><meter min={0} max={Math.max(snapshot.total,1)} value={snapshot.biggestChange?.[choice]||0}/><b>{snapshot.biggestChange?.[choice]||0}</b>
     </div>)}</section></div>:<div className="results">{snapshot.before.some(Boolean)&&<Distribution label="Opening question" counts={snapshot.before} total={snapshot.total} color="#26a7eb"/>}<Distribution label="Closing question" counts={snapshot.after} total={snapshot.total} color="#00ce62"/>{snapshot.paired>0&&<PairedResults snapshot={snapshot}/>}</div>}
-    <div className="reflection-results">{[['How easy was it to follow the AI’s instructions?',snapshot.instructionEase||{}],['Did the plan work?',snapshot.works],['How did it feel?',snapshot.feel]].filter(([,data])=>Object.keys(data).length).map(([title,data])=><section key={title as string}><h2>{title as string}</h2>{Object.entries(data as Record<string,number>).map(([label,n])=><div className="result-row" key={label}><span>{label}</span><meter min={0} max={Math.max(snapshot.total,1)} value={n}/><b>{n}</b></div>)}</section>)}</div>
+    <div className="reflection-results">{[[REFLECTION_PROMPTS[1],snapshot.instructionEase||{}],[IDEA_LIKING_QUESTION,snapshot.ideaLiking||{}],['Did the plan work?',snapshot.works],['How did it feel?',snapshot.feel]].filter(([,data])=>Object.keys(data).length).map(([title,data])=><section key={title as string}><h2>{title as string}</h2>{Object.entries(data as Record<string,number>).map(([label,n])=><div className="result-row" key={label}><span>{label}</span><meter min={0} max={Math.max(snapshot.total,1)} value={n}/><b>{n}</b></div>)}</section>)}</div>
     <section className="wall-section"><div className="distribution-head"><h2>{s.galleryPaused?'The gallery is paused':'On the wall'}</h2><span>{cards.length} shared builds and cards</span></div>
       {cards.length?<div className="gallery">{cards.map(card=><GalleryCard key={card.id} card={card} id={id} token={token} hide={()=>void hideCard(card)}/>)}</div>:<p className="empty-wall">Shared builds and cards will appear here.</p>}
     </section>
-    {revised&&firstIdeas.length>0&&<section className="wall-section"><h2>First ideas</h2><div className="gallery">{firstIdeas.map(card=>
-      <article className={`gallery-card${card.hidden?' hidden-card':''}`} key={card.id}><div className="gallery-copy"><h3>{card.title}</h3><Button onClick={()=>void hideCard(card)}>{card.hidden?'Restore to wall':'Hide from wall'}</Button></div></article>
-    )}</div></section>}
+    {revised&&firstIdeas.length>0&&<section className="wall-section"><h2>First ideas</h2><div className="gallery">{firstIdeas.map(card=><GalleryCard key={card.id} card={card} id={id} token={token} hide={()=>void hideCard(card)}/>)}</div></section>}
     {revised&&<section className="control-panel"><h2>Images approved for gervilabs.com</h2>
       <p>Use these images only in the public write-up for this experiment. Check permission again before publishing.</p>
       {snapshot.publication?.length?<ul>{snapshot.publication.map(photo=><li key={photo.assetId}>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { revisedFlow, type Session } from '../server/model';
+import { requiredFlow, revisedFlow, type Session } from '../server/model';
 
 export function RoundClock({session,compact=false}:{session:Session;compact?:boolean}){
   const [now,setNow]=useState(Date.now);
@@ -20,8 +20,8 @@ export function RoundClock({session,compact=false}:{session:Session;compact?:boo
   const remaining=paused?session.remainingMs:session.endsAt?Date.parse(session.endsAt)-serverNow:null;
   if(remaining===null)return null;
   const seconds=Math.max(0,Math.ceil(remaining/1000));
-  const round:Partial<Record<number,string>>={0:'Get a plan',1:'Build',2:session.exchange?'Neighbour exchange':'Reflection',3:'Make it yours'};
-  const label=paused?'Timer paused':seconds===0?'Time is up':`${round[session.phase]||'Round'} · time remaining`;
+  const round:Partial<Record<number,string>>={0:requiredFlow(session)?'Get your AI instructions':'Get a plan',1:'Build',2:session.exchange?'Neighbour exchange':'Reflection',3:'Make it yours',5:'Final neighbour exchange'};
+  const label=`${round[session.phase]||'Round'} · ${paused?'paused':seconds===0?'time is up':'time remaining'}`;
   const handoffCue=revisedFlow(session)&&session.phase===0&&seconds<=60&&!paused;
   return <div className={`round-clock${compact?' compact':''}${seconds<=30?' ending':''}`}>
     <span aria-live="polite">{label}</span>

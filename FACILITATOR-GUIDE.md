@@ -10,22 +10,24 @@ Set out one matching brick kit per person, with spare pieces available. Confirm 
 
 | Time | Activity | Facilitator action |
 |---:|---|---|
-| 4 min | Join and choose an AI app | Watch the join count, then select **Open build plan**. |
-| 6 min | Photograph the bricks and get instructions | Watch **have instructions** and **ready to build without a plan**. Ask people to use today’s prompt if their AI is still working when time is up. The manual send controls are under **Need help?**. |
+| 4 min | Join and choose an AI app | Participants make both sharing choices here. Watch the join count, then select **Open build plan**. |
+| 6 min | Photograph the bricks and get instructions | Say that AI plans can miscount pieces or give inconsistent diagrams. Ask people to build what they can. Watch **have instructions** and **reported no plan**, then add time if the room needs it. Participants save the AI’s first idea and an image as soon as they return. Manual send and fallback choices are under **Need help?**. |
 | 5 min | Try the AI’s plan | Select **Start build**. Give everyone time to work with the bricks they have. |
-| 3 min | Capture the first build and reveal the first ideas | Select **Capture builds**. People can share a photo and a short label for the AI’s first suggestion. Once the labels are in, select **Reveal first ideas**. Ask the room what patterns they notice. |
-| 4 min | Reflect and talk with a neighbour | Select **Start reflection** for two minutes. Lead with “What would you change first?” Then select **Start neighbour exchange**. Give each person one minute to show their build and tell their neighbour what they’d change. |
-| 6 min | Develop the idea | Select **Start make it yours**. Ask people to take one change back to the same AI chat. |
-| 4 min | Make a concept card | Select **Open concept cards**. People give the developed idea a name and describe it in one sentence. Sharing is optional. |
-| 8 min | Compare the walls and debrief | Select **Open final reflection**. It opens the comparison of first ideas and final cards. Use **Results** for the closing question. |
+| 3 min | Capture and reveal the first builds | Select **Capture builds**. Everyone saves a photo of what they built. Select **Reveal first ideas** to show the original AI proposal next to the build and see repeated ideas across the room. |
+| 4 min | Reflect and talk with a neighbour | Select **Start reflection** for two minutes. The phone asks for two ratings and one line about what to change. Select **Start neighbour exchange** and give each person one minute to show their build and describe a change. |
+| 6 min | Develop the idea | Select **Start make it yours**. Ask people to take one change back to their AI chat. The bricks were a prototype. The idea can become a game, a ritual, a service, or an experience. |
+| 4 min | Make a concept card | Select **Open concept cards**. Everyone saves a name, one-sentence description, image, and a note on what changed. Watch the saved card count. |
+| 8 min | Compare the cards and debrief | Select **Open final reflection** to show originals next to final cards. If time allows, run **Final neighbour exchange** for two minutes within this block, then return to **Compare ideas**. Use **Results** once the closing votes are in. |
 
 Use **Pause timer**, **Resume timer**, **Restart timer**, or **+1 minute** to adjust the pace. The phone and projector follow the same clock. If someone is stuck, ask for the **Builder reference** in their Session settings and look them up under **Where is everyone?**.
 
 ## Debrief
 
-Ask people to look at both walls before you describe a pattern. How similar were the first suggestions? Where did the final ideas diverge? The contribution counts show who chose to share. The pairs show what changed for people who shared both.
+Ask people to look at the pairs before you describe a pattern. How similar were the first suggestions? Which builds matched the AI plan? Where did the final ideas diverge?
 
 Pick one pair. Ask the builder what prompted their change. Listen for a missing brick, a neighbour’s observation, a different audience, or an experience the builder wanted to create. Find someone who kept the first idea and ask what made it worth keeping. Invite one observation from the room before showing the results of **What changed most from the AI’s first idea?**
+
+If the room needs an example, use **The Human and Agent Bridge**. The AI first suggested a brick bridge. The builder turned it into a meeting point where a human builds from one side and an AI agent builds from the other. Move to the Magic Button / Centaur / Cyborg slide when you transition to the multiplayer ending.
 
 ## Close and document
 

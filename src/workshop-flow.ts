@@ -1,7 +1,8 @@
-import {WORKSHOP_NAME,hasTimer,revisedFlow,type Session} from '../server/model';
+import {WORKSHOP_NAME,hasTimer,requiredFlow,revisedFlow,type Session} from '../server/model';
 
 export const WORKSHOP_BRIEF='Create something that brings people together.';
 export const WORKSHOP_PROMPT_LABEL='Today’s prompt';
+export const IDEA_LIKING_QUESTION='How much did you like the idea?';
 export const REFLECTION_PROMPTS=[
   'What was the AI’s concept?',
   'How easy was it to follow the AI’s instructions?',
@@ -26,15 +27,23 @@ const stageCues=[
 export function stageCue(session:Session){
   if(session.closed)return {title:'Thanks for building',steps:['Take your ideas with you.'],step:5};
   if(session.phase<0)return {title:`Join ${WORKSHOP_NAME}`,steps:['Scan the QR code with your phone.','Choose the AI app you’ll use today.'],step:0};
+  const required=requiredFlow(session);
+  if(required&&session.phase===0)return {title:'Get an AI build plan',steps:[
+    ...stageCues[0].steps.slice(0,3),
+    'When you have your instructions, bring them back into The Lab. Save the first idea and an image.',
+  ],step:1};
+  if(required&&session.phase===5&&session.stageView==='final-exchange')return {title:'Compare with your neighbour',steps:['Show each other your final concept cards.','Take one minute each to explain what changed and why.'],step:5};
   if(session.phase===2&&!hasTimer(session)){
     const steps=[`Open ${WORKSHOP_NAME} on your phone.`,'Take a photo of what you actually built, even if it’s unfinished.'];
-    if(revisedFlow(session))steps.push('If you have a plan, share a short label for the AI’s first idea.');
+    if(revisedFlow(session)&&!required)steps.push('If you have a plan, share a short label for the AI’s first idea.');
     return {title:'Photograph your build',steps,step:3};
   }
   if(revisedFlow(session)&&session.phase===2){
     if(session.exchange)return {title:'Show your neighbour',steps:['Show the person next to you what you built.','Take one minute each to say what you would change and hear their idea.','Choose one change to take back to your AI chat.'],step:3};
-    return {title:'Reflect on the first build',steps:['What would you change first?',REFLECTION_PROMPTS[1]],step:3};
+    return {title:'Reflect on the first build',steps:required?[REFLECTION_PROMPTS[1],IDEA_LIKING_QUESTION,'What would you change first?']:['What would you change first?',REFLECTION_PROMPTS[1]],step:3};
   }
+  if(required&&session.phase===3)return {title:'Make it yours',steps:['What’s the first thing you’d do to make this yours?','Take that change back to your AI chat.','The bricks were a prototype. Your idea can become a game, a ritual, a service, or an experience.'],step:4};
+  if(required&&session.phase===4)return {title:'Make a concept card',steps:['Name your idea and describe it in one sentence.','Upload a final image, a screenshot, or a photo of a sketch.','Add one line about what changed.'],step:4};
   if(revisedFlow(session)&&session.phase===5)return {title:'Reflect together',steps:['Compare the AI’s first ideas with the final cards.','What changed, and what prompted that decision?','Find an idea someone kept. What made it worth keeping?'],step:5};
   return {...stageCues[session.phase],step:Math.min(session.phase+1,session.phase===4?4:5)};
 }

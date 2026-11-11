@@ -51,6 +51,7 @@ ALTER TABLE sessions ADD COLUMN IF NOT EXISTS first_revealed boolean NOT NULL DE
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS exchange boolean NOT NULL DEFAULT false;
 ALTER TABLE participants ADD COLUMN IF NOT EXISTS writeup_version integer NOT NULL DEFAULT 0;
 ALTER TABLE assets ADD COLUMN IF NOT EXISTS purpose text NOT NULL DEFAULT 'room';
+ALTER TABLE assets ADD COLUMN IF NOT EXISTS publication_withdrawn boolean NOT NULL DEFAULT false;
 ALTER TABLE participants ADD COLUMN IF NOT EXISTS retain_until timestamptz;
 CREATE INDEX IF NOT EXISTS participant_retention ON participants(retain_until) WHERE retain_until IS NOT NULL;
 CREATE TABLE IF NOT EXISTS expired_photo_files (asset_id uuid PRIMARY KEY);

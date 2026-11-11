@@ -1,5 +1,5 @@
 import { get, set, del } from 'idb-keyval';
-import { isWriteupKind, type Answers, type CardKind, type Participant, type Session } from '../server/model';
+import { isWriteupKind, requiredFlow, type Answers, type CardKind, type Participant, type Session } from '../server/model';
 export const API=(import.meta.env?.VITE_API_URL || '').replace(/\/$/,'');
 export class ApiError extends Error { constructor(public status:number,message:string){super(message);} }
 export async function request<T>(path:string,token='',body?:unknown,method=body?'POST':'GET',signal?:AbortSignal):Promise<T> {
@@ -19,8 +19,8 @@ export async function live(id:string,token:string,signal:AbortSignal,onChange:()
     await new Promise<void>(resolve=>{const t=setTimeout(resolve,2500+Math.random()*2000);signal.addEventListener('abort',()=>{clearTimeout(t);resolve();},{once:true});});
   }
 }
-export type Draft={step:number; aiConcept:string; firstIdea:string; firstIdeaSent:string; decided:string; name:string; what:string; mine:string; pilePhoto:string; buildPhoto:string; conceptPhoto:string; handedOff:boolean; buildCaptured:boolean; buildSent:boolean; sent:boolean; buildWriteupSent:boolean; conceptWriteupSent:boolean; answers:Answers;waitingForPhase:number|null};
-const blank=():Draft=>({step:0,aiConcept:'',firstIdea:'',firstIdeaSent:'',decided:'',name:'',what:'',mine:'',pilePhoto:'',buildPhoto:'',conceptPhoto:'',handedOff:false,buildCaptured:false,buildSent:false,sent:false,buildWriteupSent:false,conceptWriteupSent:false,answers:{},waitingForPhase:null});
+export type Draft={step:number; aiConcept:string; firstIdea:string; firstIdeaSent:string; decided:string; name:string; what:string; mine:string; pilePhoto:string; originalPhoto:string; buildPhoto:string; conceptPhoto:string; handedOff:boolean; recordingPlan:boolean; buildCaptured:boolean; reflectionDone:boolean; buildSent:boolean; sent:boolean; buildWriteupSent:boolean; conceptWriteupSent:boolean; answers:Answers;waitingForPhase:number|null};
+const blank=():Draft=>({step:0,aiConcept:'',firstIdea:'',firstIdeaSent:'',decided:'',name:'',what:'',mine:'',pilePhoto:'',originalPhoto:'',buildPhoto:'',conceptPhoto:'',handedOff:false,recordingPlan:false,buildCaptured:false,reflectionDone:false,buildSent:false,sent:false,buildWriteupSent:false,conceptWriteupSent:false,answers:{},waitingForPhase:null});
 type DraftStore={get:<T>(key:string)=>Promise<T|undefined>;set:(key:string,value:unknown)=>Promise<void>;del:(key:string)=>Promise<void>};
 type Job={id:string; kind:'patch'|'publish'; patch?:Answers; card?:{kind:CardKind; title:string; description:string; mine:string; photo:string}; body?:any; assetId?:string; consentVersion?:number};
 export type Identity={id:string;token:string;participant:Participant;session:Session};
@@ -33,7 +33,7 @@ export class Workshop {
   edit(patch:Partial<Draft>){if(this.reset)return;Object.assign(this.draft,patch);this.onChange();void this.persist().catch(()=>{});}
   async patch(patch:Answers){
     if(this.reset)return;Object.assign(this.draft.answers,patch);
-    if(patch.share===false){
+    if(patch.share===false&&!requiredFlow(this.identity.session)){
       this.jobs=this.jobs.filter(j=>!j.card||isWriteupKind(j.card.kind));
       this.draft.sent=false;this.draft.buildSent=false;this.draft.firstIdeaSent='';
     }
@@ -47,15 +47,16 @@ export class Workshop {
   async publish(kind:CardKind,allowSharing=false){
     if(this.reset||this.publishing(kind))return;
     const draft=this.draft;
+    const required=requiredFlow(this.identity.session);
     const permission=isWriteupKind(kind)?'writeup':'share';
-    if(!draft.answers[permission]){
+    if(!required&&!draft.answers[permission]){
       if(!allowSharing)return;
       draft.answers[permission]=true;
       this.jobs.push({id:crypto.randomUUID(),kind:'patch',patch:{[permission]:true}});
     }
-    const title=kind==='first-idea'?draft.firstIdea.trim():kind==='concept'?draft.name:kind==='build'?'First build':'';
-    const photo=kind==='first-idea'?'':kind==='build'||kind==='writeup-build'?draft.buildPhoto:draft.conceptPhoto;
-    this.jobs.push({id:crypto.randomUUID(),kind:'publish',card:{kind,title,description:kind==='concept'?draft.what:'',mine:kind==='concept'?draft.mine:'',photo}});
+    const title=kind==='first-idea'?draft.firstIdea.trim():kind==='concept'?draft.name.trim():kind==='build'?'First build':'';
+    const photo=kind==='first-idea'?(required?draft.originalPhoto:''):kind==='build'||kind==='writeup-build'?draft.buildPhoto:draft.conceptPhoto;
+    this.jobs.push({id:crypto.randomUUID(),kind:'publish',card:{kind,title,description:kind==='concept'?draft.what.trim():'',mine:kind==='concept'?draft.mine.trim():'',photo}});
     if(kind==='concept')draft.sent=false;
     if(kind==='build')draft.buildSent=false;
     this.onChange();await this.persist();void this.flush();
@@ -71,19 +72,20 @@ export class Workshop {
           const participant=await request<Participant>(`/v1/sessions/${id}/me`,token,job.body,'PATCH',this.abort.signal);if(this.reset)return;this.identity.participant=participant;
         } else {
           const card=job.card!;
+          const required=requiredFlow(this.identity.session);
           const writeup=isWriteupKind(card.kind),permission=writeup?'writeup':'share';
-          if(!this.draft.answers[permission]){this.jobs.shift();continue;}
+          if(!required&&!this.draft.answers[permission]){this.jobs.shift();continue;}
           try{
-            job.consentVersion ??= writeup?this.identity.participant.writeupVersion??0:this.identity.participant.consentVersion;
+            job.consentVersion ??= required?0:writeup?this.identity.participant.writeupVersion??0:this.identity.participant.consentVersion;
             await this.persist();
             if(card.photo && !job.assetId){
               const blob=await(await fetch(card.photo)).blob(),form=new FormData();form.append('photo',blob,'build.jpg');
-              const purpose=writeup?'writeup':'room';
+              const purpose=required?'workshop':writeup?'writeup':'room';
               const res=await fetch(API+`/v1/sessions/${id}/photos?consentVersion=${job.consentVersion}&purpose=${purpose}`,{method:'POST',signal:AbortSignal.any([this.abort.signal,AbortSignal.timeout(45000)]),headers:{Authorization:'Bearer '+token},body:form});
               if(!res.ok){const e=await res.json();throw new ApiError(res.status,e.error);}
               const uploaded=await res.json();if(this.reset)return;job.assetId=uploaded.assetId;await this.persist();
             }
-            if(this.reset)return;if(!this.draft.answers[permission] || !this.jobs.includes(job))continue;
+            if(this.reset)return;if(!this.jobs.includes(job)||!required&&!this.draft.answers[permission])continue;
             job.body ||= {operationId:job.id,expectedRevision:this.identity.participant.revision,consentVersion:job.consentVersion,kind:card.kind,title:card.title,description:card.description,mine:card.mine,assetId:job.assetId||null};await this.persist();
             await request(`/v1/sessions/${id}/cards`,token,job.body,'POST',this.abort.signal);
           }catch(e){
@@ -93,9 +95,9 @@ export class Workshop {
           }
           if(this.reset)return;
           const draft=this.draft;
-          if(this.jobs.includes(job)&&draft.answers[permission]){
+          if(this.jobs.includes(job)&&(required||draft.answers[permission])){
             if(card.kind==='build'&&card.photo===draft.buildPhoto)draft.buildSent=true;
-            if(card.kind==='concept'&&card.title===draft.name&&card.description===draft.what&&card.mine===draft.mine&&card.photo===draft.conceptPhoto)draft.sent=true;
+            if(card.kind==='concept'&&card.title===draft.name.trim()&&card.description===draft.what.trim()&&card.mine===draft.mine.trim()&&card.photo===draft.conceptPhoto)draft.sent=true;
             if(card.kind==='first-idea')draft.firstIdeaSent=card.title;
             if(card.kind==='writeup-build'&&card.photo===draft.buildPhoto)draft.buildWriteupSent=true;
             if(card.kind==='writeup-concept'&&card.photo===draft.conceptPhoto)draft.conceptWriteupSent=true;
@@ -105,7 +107,23 @@ export class Workshop {
       }
     } catch(e){if(e instanceof ApiError&&e.status===410){await this.sessionReset();return;}if(this.reset)return;this.message=e instanceof ApiError?e.message:'Saved on this phone. Waiting for a connection to send.';if(e instanceof ApiError && e.status>=400 && e.status<500 && e.status!==429){this.blocked=true;}}finally{this.busy=false;this.onChange();}
   }
-  async retry(){if(this.reset)return;if(this.blocked){this.blocked=false;this.jobs=[];this.draft.sent=false;await this.refresh();if(this.reset)return;this.draft.answers={...this.identity.participant.data};await this.persist();this.message='Connected again. Please make your selection or submit your card again.';}else await this.flush();this.onChange();}
+  async retry(){
+    if(this.reset)return;
+    if(!this.blocked){await this.flush();return;}
+    const pending=this.jobs;this.jobs=[];
+    try{await this.refresh();}catch{this.jobs=pending;this.message='Still waiting for a connection. Your work is saved on this phone.';this.onChange();return;}
+    if(this.reset)return;
+    this.blocked=false;
+    const answers=this.identity.participant.data;
+    this.draft.answers={...answers};
+    this.draft.sent=false;
+    if(requiredFlow(this.identity.session)){
+      const step=answers.progress??0;
+      Object.assign(this.draft,{step,waitingForPhase:null,buildCaptured:step>=6,reflectionDone:step>=6,sent:step>=8,handedOff:answers.handoff==='ready'});
+    }
+    this.message='Connected again. Review this step and continue.';
+    await this.persist();this.onChange();
+  }
   private async sessionReset(){
     if(this.reset)return;this.reset=true;this.abort.abort();this.jobs=[];this.draft=blank();this.blocked=true;
     this.message='Your facilitator reset the session. Join again to start fresh.';this.onChange();

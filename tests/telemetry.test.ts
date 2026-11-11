@@ -13,10 +13,10 @@ test('host activity reports current/backward steps, waiting, save problems, fres
   const app=await createApp({db,dataDir:dir,adminToken:'test-admin',origins:['http://localhost:5173']});
   const call=async(method:any,url:string,token='',payload?:any)=>{const r=await app.inject({method,url,headers:token?{authorization:'Bearer '+token}:{},payload});return {status:r.statusCode,data:r.json()};};
   try{
-    const {id,code,hostToken,stageToken}=(await call('POST','/v1/sessions','test-admin',{title:'Activity test'})).data;
+    const {id,code,hostToken,stageToken}=(await call('POST','/v1/sessions','test-admin',{title:'Activity test',flowVersion:2})).data;
     const root='/v1/sessions/'+id;
     const user=(await call('POST','/v1/join','',{code,joinKey:randomUUID()})).data;
-    const foreign=(await call('POST','/v1/sessions','test-admin',{title:'Other session'})).data;
+    const foreign=(await call('POST','/v1/sessions','test-admin',{title:'Other session',flowVersion:2})).data;
     const report={step:1,visibility:'visible',pendingSaves:0,syncStatus:'saved',waitingForPhase:1,photos:{pile:true,build:false,concept:false},handedOff:false,cardReady:false};
     assert.equal((await call('POST',root+'/telemetry',hostToken,report)).status,401);
     assert.equal((await call('POST',root+'/telemetry',stageToken,report)).status,401);

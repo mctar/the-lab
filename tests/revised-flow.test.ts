@@ -19,7 +19,7 @@ test('revised rooms time the handoff and exchange, reveal opted-in pairs, and is
     return {status:response.statusCode,data:response.json()};
   }
   try{
-    const room=(await call('POST','/v1/sessions','test-admin',{title:'Revised rehearsal'})).data;
+    const room=(await call('POST','/v1/sessions','test-admin',{title:'Revised rehearsal',flowVersion:2})).data;
     const root='/v1/sessions/'+room.id;
     const {participant,session,token}=(await call('POST','/v1/join','',{code:room.code,joinKey:randomUUID(),aiTool:'Claude'})).data;
     assert.equal(session.flowVersion,2);

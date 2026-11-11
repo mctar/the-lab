@@ -37,11 +37,11 @@ Development uses embedded PostgreSQL via PGlite in `.runtime/database`. Producti
 npm test
 npm run build
 npm run load
-# Include an upload burst:
-PHOTOS=200 npm run load
+# Use camera-sized images for the venue-sized upload bursts:
+USERS=200 PHOTOS=200 npm run load
 ```
 
-The load test creates a separate, clearly named session, exercises 400 identities and live connections, saves before/after answers, optionally uploads photos, checks aggregate counts, and closes its test session. It does not touch workshop sessions. Reports contain timing and counts, not credentials. Use an off-peak window for load tests on Hugin.
+The load test creates a separate, clearly named session and exercises 400 simultaneous identities by default. Each participant submits three images, answers both ratings and the closing vote, and finishes. The test checks staff counts, both reveals, and projection consent before closing its room. Set `PHOTOS` to the number of participants who should send larger images. Use an off-peak window for load tests on Hugin.
 
 ## Hugin deployment
 
@@ -96,7 +96,7 @@ The facilitator's **Reset all…** control opens an **Are you sure?** dialog. Ca
 
 Reset starts an empty run in the welcome lobby: zero registrations, answers, AI choices, gallery items, and telemetry, with no running/paused timer. The room code and host/stage links stay valid. Updated phones return to Join, discard the previous draft and upload queue, and obtain a fresh identity when they rejoin. Reload older open clients before the next test to load this behavior; their old credentials are rejected after reset. Offline phones clear their previous draft when they reconnect.
 
-Previous server runs remain private on Hugin for recovery and retain their original retention deadlines. They are excluded from current snapshots, exports, image access, and participant writes. Reset acknowledgements in the operations table retain the previous session settings. Private notes/photos that never left a phone cannot be recovered after its draft is cleared. New rooms and confirmed resets use the revised flow. Existing runs keep their original flow until reset. Take a matching database and photo backup before changing the backend and keep a release that preserves run isolation.
+Previous server runs remain private on Hugin for recovery and retain their original retention deadlines. They are excluded from current snapshots, exports, image access, and participant writes. Reset acknowledgements in the operations table retain the previous session settings. Private notes/photos that never left a phone cannot be recovered after its draft is cleared. New rooms and confirmed resets use the required flow with join-only consent. Existing runs retain the flow they started with. Take a matching database and photo backup before changing the backend and keep a release that preserves run isolation.
 
 ## Checks
 

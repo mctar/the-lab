@@ -12,7 +12,7 @@ test('session lifecycle: ownership, phase gates, idempotency, gallery consent, h
   const app=await createApp({dataDir:dir,adminToken:admin,origins:['http://localhost:5173']});
   const call=async(method:any,url:string,token='',payload?:any)=>{const r=await app.inject({method,url,headers:token?{authorization:'Bearer '+token}:{},payload});return {status:r.statusCode,data:r.json()};};
   try {
-    const created=await call('POST','/v1/sessions',admin,{title:'Test room'});assert.equal(created.status,201);
+    const created=await call('POST','/v1/sessions',admin,{title:'Test room',flowVersion:2});assert.equal(created.status,201);
     const {id,code,hostToken,stageToken}=created.data,root='/v1/sessions/'+id;
     const joinKey=randomUUID(),a=(await call('POST','/v1/join','',{code,joinKey})).data;
     const repeat=(await call('POST','/v1/join','',{code,joinKey})).data;assert.equal(a.participant.id,repeat.participant.id);assert.equal(a.token,repeat.token);
@@ -28,7 +28,7 @@ test('session lifecycle: ownership, phase gates, idempotency, gallery consent, h
     assert.equal((await call('PATCH',root+'/me',a.token,{operationId:randomUUID(),expectedRevision:0,patch:{before:2}})).status,409);
     assert.equal((await call('PATCH',root+'/me',a.token,{operationId:randomUUID(),expectedRevision:1,patch:{before:7}})).status,400);
     assert.equal((await call('PATCH',root+'/me',a.token,{operationId:randomUUID(),expectedRevision:1,patch:{participant_id:b.participant.id}})).status,400);
-    const other=(await call('POST','/v1/sessions',admin,{title:'Other room'})).data;
+    const other=(await call('POST','/v1/sessions',admin,{title:'Other room',flowVersion:2})).data;
     assert.equal((await call('GET','/v1/sessions/'+other.id,a.token)).status,401);
     await call('PATCH',root+'/control',hostToken,{expectedRevision:1,phase:4});
     const image=await sharp({create:{width:24,height:24,channels:3,background:'#2151c6'}}).jpeg().toBuffer();

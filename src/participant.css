@@ -49,6 +49,7 @@
 .brick-options { border: 0; margin: 18px 0; padding: 0; }
 .brick-options legend { font-weight: 650; margin-bottom: 8px; padding: 0; }
 .brick-options > div { grid-template-columns: repeat(3,minmax(0,1fr)); }
+.brick-options > div:has(button:nth-child(4)) { grid-template-columns: repeat(2,minmax(0,1fr)); }
 .brick-options button { padding-inline: 8px; font-size: 14px; }
 .brick-mobile .brick-photo { margin: 16px 0 6px; }
 .brick-photo img { max-height: min(46vh, 340px); object-fit: contain; margin-inline: auto; }

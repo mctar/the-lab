@@ -1,8 +1,8 @@
 import React,{useEffect,useRef,useState,type CSSProperties} from 'react';
-import {CHANGE_CHOICES,CHANGE_QUESTION,INSTRUCTION_EASE,SCALE,WORKSHOP_NAME,hasTimer,revisedFlow,type Card,type Snapshot} from '../server/model';
+import {CHANGE_CHOICES,CHANGE_QUESTION,IDEA_LIKING,INSTRUCTION_EASE,INSTRUCTION_EASE_CHOICES,SCALE,WORKSHOP_NAME,hasTimer,requiredFlow,revisedFlow,type Card,type Snapshot} from '../server/model';
 import {pairedMovement} from './stage-data';
 import {RoundClock} from './round-clock';
-import {stageCue,STAGE_STEPS,WORKSHOP_BRIEF,WORKSHOP_PROMPT_LABEL} from './workshop-flow';
+import {IDEA_LIKING_QUESTION,REFLECTION_PROMPTS,stageCue,STAGE_STEPS,WORKSHOP_BRIEF,WORKSHOP_PROMPT_LABEL} from './workshop-flow';
 import './stage.css';
 
 const COLORS=['#f48bce','#83c9ff','#b4ee6b'];
@@ -95,8 +95,11 @@ function Gallery({snapshot,photo}:{snapshot:Snapshot;photo:StageProps['photo']})
 function Reflections({snapshot}:{snapshot:Snapshot}){
   const ease=snapshot.instructionEase||{};
   const legacy=[{title:'Did the plan work?',counts:snapshot.works,labels:['Yes','Partly','No']},{title:'How did following it feel?',counts:snapshot.feel,labels:['Easy','Mixed','Uncomfortable']}];
-  const groups=Object.keys(ease).length||legacy.every(group=>!Object.keys(group.counts).length)?[{title:'How easy was it to follow the AI’s instructions?',counts:ease,labels:INSTRUCTION_EASE}]:legacy;
-  return <div className="play-reflections">{groups.map((group,g)=><section key={group.title}><p className="play-eyebrow">{g===0?'THE PLAN MET THE BRICKS':'THE HUMAN PART'}</p><h2>{group.title}</h2><div className="reflection-stacks">{group.labels.map((label,i)=>{const n=group.counts[label]||0,maximum=Math.max(1,...Object.values(group.counts));return <div className="reflection-choice" key={label} style={styleVars({'--reflection-color':COLORS[i]})}><div className="reflection-bar"><i style={{height:`${n/maximum*100}%`}}>{Array.from({length:4},(_,j)=><span key={j}/>)}</i><strong><Count value={n}/></strong></div><h3>{label}</h3></div>;})}</div><p className="reflection-total">{Object.values(group.counts).reduce((a,b)=>a+b,0)} / {snapshot.total} answered</p></section>)}</div>;
+  const required=requiredFlow(snapshot.session);
+  const ratings:{title:string;counts:Record<string,number>;labels:readonly string[]}[]=[{title:REFLECTION_PROMPTS[1],counts:ease,labels:required?INSTRUCTION_EASE_CHOICES:INSTRUCTION_EASE}];
+  if(required)ratings.push({title:IDEA_LIKING_QUESTION,counts:snapshot.ideaLiking||{},labels:IDEA_LIKING});
+  const groups=required||Object.keys(ease).length||legacy.every(group=>!Object.keys(group.counts).length)?ratings:legacy;
+  return <div className="play-reflections">{groups.map((group,g)=><section key={group.title}><p className="play-eyebrow">{g===0?'THE PLAN MET THE BRICKS':'THE HUMAN PART'}</p><h2>{group.title}</h2><div className="reflection-stacks" style={styleVars({'--rating-options':group.labels.length})}>{group.labels.map((label,i)=>{const n=group.counts[label]||0,maximum=Math.max(1,...Object.values(group.counts));return <div className="reflection-choice" key={label} style={styleVars({'--reflection-color':COLORS[i%COLORS.length]})}><div className="reflection-bar"><i style={{height:`${n/maximum*100}%`}}>{Array.from({length:4},(_,j)=><span key={j}/>)}</i><strong><Count value={n}/></strong></div><h3>{label}</h3></div>;})}</div><p className="reflection-total">{Object.values(group.counts).reduce((a,b)=>a+b,0)} / {snapshot.total} answered</p></section>)}</div>;
 }
 
 function IdeaTiles({title,cards,index,limit}:{title:string;cards:Card[];index:number;limit:number}){
@@ -139,6 +142,43 @@ function IdeaWall({snapshot,compare}:{snapshot:Snapshot;compare:boolean}){
   </div>;
 }
 
+function RevealCard({card,label,photo}:{card?:Card;label:string;photo:StageProps['photo']}){
+  return <article className="reveal-card">
+    <p className="reveal-label">{label}</p>
+    {card?<><h2>{card.title}</h2>{card.assetId&&<div className="reveal-photo">{photo(card,true)}</div>}
+      {card.description&&<p className="reveal-description">{card.description}</p>}
+      {card.mine&&<p className="reveal-change"><strong>What changed</strong> {card.mine}</p>}
+    </>:<p className="reveal-description">No original idea to display.</p>}
+  </article>;
+}
+
+function WorkshopReveal({snapshot,compare,photo}:{snapshot:Snapshot;compare:boolean;photo:StageProps['photo']}){
+  const [index,setIndex]=useState(0),[paused,setPaused]=useState(false);
+  const first=snapshot.ideas?.first||[];
+  const pairs=compare?snapshot.ideas?.comparisons:snapshot.ideas?.firstBuilds;
+  const count=pairs?.length||0,page=count?index%count:0,pair=pairs?.[page];
+  useEffect(()=>{
+    if(paused||count<2)return;
+    const timer=setInterval(()=>setIndex(i=>i+1),16000);
+    return()=>clearInterval(timer);
+  },[paused,count]);
+  if(snapshot.session.galleryPaused)return <p className="idea-empty">The reveal is paused.</p>;
+  if(!pair)return <IdeaTiles title={compare?'Final concept cards':'AI’s first suggestions'} cards={compare?snapshot.ideas?.final||[]:first} index={index} limit={12}/>;
+  const outcome='final' in pair?pair.final:pair.build;
+  return <div className="workshop-reveal">
+    <div className="reveal-pair">
+      <RevealCard card={pair.first} label="Original AI idea" photo={photo}/>
+      <RevealCard card={outcome} label={compare?'Final concept':'What the builder made'} photo={photo}/>
+    </div>
+    <div className="reveal-navigation"><span>{page+1} / {count} {compare?'final concepts':'first builds'}</span>{count>1&&<>
+      <button onClick={()=>{setPaused(true);setIndex(i=>(i+count-1)%count);}}>Previous</button>
+      <button onClick={()=>setPaused(value=>!value)} aria-pressed={paused}>{paused?'Resume rotation':'Pause rotation'}</button>
+      <button onClick={()=>{setPaused(true);setIndex(i=>i+1);}}>Next</button>
+    </>}</div>
+    {!compare&&<IdeaTiles title="Ideas across the room" cards={first} index={index} limit={8}/>}
+  </div>;
+}
+
 function ClosingChanges({snapshot}:{snapshot:Snapshot}){
   const counts=snapshot.biggestChange||{}, maximum=Math.max(1,...Object.values(counts));
   const answered=Object.values(counts).reduce((sum,n)=>sum+n,0);
@@ -151,7 +191,7 @@ function ClosingChanges({snapshot}:{snapshot:Snapshot}){
 }
 
 export function StageScreen({snapshot,connected,error,qr,joinUrl,photo}:StageProps){
-  const s=snapshot.session,cue=stageCue(s),view=s.stageView,lobby=s.phase<0&&!s.closed;
+  const s=snapshot.session,cue=stageCue(s),view=s.stageView,lobby=s.phase<0&&!s.closed,required=requiredFlow(s);
   const {enabled:motion,paused:motionPaused,forced:reducedMotion,toggle}=useMotion();
   const [joinOpen,setJoinOpen]=useState(false);
   const previousTotal=useRef(snapshot.total),[joinBurst,setJoinBurst]=useState(false);
@@ -161,20 +201,23 @@ export function StageScreen({snapshot,connected,error,qr,joinUrl,photo}:StagePro
   const showSpotlight=!s.galleryPaused&&snapshot.gallery.length>0;
   const timed=hasTimer(s)&&!s.closed;
   const gettingPlan=s.phase===0&&!s.closed;
-  const sideClock=timed&&!gettingPlan;
+  const instructions=view==='overview'||view==='final-exchange';
+  const sideClock=timed&&!gettingPlan&&instructions;
   const title=view==='first-ideas'?'What did the AI suggest?':view==='comparison'?'What did we change?':cue.title;
   return <div className={`play-stage stage-scene-${lobby?'lobby':view}`} data-motion={motion?'on':'off'}>
     <div className="play-background" aria-hidden="true"><Brick color={COLORS[0]}/><Brick color={COLORS[1]}/><Brick color={COLORS[2]}/></div>
     <header className="play-header"><div className="play-brand"><span className="brand-brick"><i/><i/></span><b>{WORKSHOP_NAME}</b>{rehearsal&&<span className="rehearsal-tag">DRY RUN</span>}</div><div className={'play-live'+(!connected||error?' reconnecting':'')} role="status"><i/>{connected&&!error?'LIVE':'RECONNECTING'}</div></header>
     <div className="play-title-row cue-title-row">
-      <div><p className="cue-kicker">{s.closed?'Workshop complete':`${cue.step+1} / ${STAGE_STEPS.length} · ${STAGE_STEPS[cue.step]}`}</p><h1>{title}</h1>{!lobby&&view!=='overview'&&<p className="cue-reminder">{view==='first-ideas'?'Look for patterns in the ideas people chose to share.':view==='comparison'?'What changed, and what prompted that decision?':cue.steps[0]}</p>}</div>
-      {!lobby&&(view!=='overview'||gettingPlan)&&<RoundClock session={s} compact/>}
+      <div><p className="cue-kicker">{s.closed?'Workshop complete':`${cue.step+1} / ${STAGE_STEPS.length} · ${STAGE_STEPS[cue.step]}`}</p><h1>{title}</h1>{!lobby&&!instructions&&<p className="cue-reminder">{view==='first-ideas'?'Look for patterns in the ideas people shared.':view==='comparison'?(required?'What changed, and why? Answer the closing question on your phone.':'What changed, and what prompted that decision?'):cue.steps[0]}</p>}</div>
+      {!lobby&&(!instructions||gettingPlan)&&<RoundClock session={s} compact/>}
     </div>
     <main className="play-content">
       {lobby?<div className="stage-join">
         <div className="stage-join-copy"><h2>Scan with your phone</h2><p>Have your loose bricks and your AI app ready.</p><div className={'room-counter'+(joinBurst?' new-builder':'')}><strong><Count value={snapshot.total}/></strong><span>JOINED THE WORKSHOP</span></div></div>
         <div className="welcome-join"><a href={joinUrl} className="large-join-qr">{qr}</a><p>Or enter this room code</p><strong>{s.code}</strong></div>
-      </div>:view==='first-ideas'||view==='comparison'?<IdeaWall key={view} snapshot={snapshot} compare={view==='comparison'}/>:
+      </div>:view==='first-ideas'||view==='comparison'?(
+        required?<WorkshopReveal key={view} snapshot={snapshot} compare={view==='comparison'} photo={photo}/>:<IdeaWall key={view} snapshot={snapshot} compare={view==='comparison'}/>
+      ):
         view==='results'?(revisedFlow(s)?<ClosingChanges snapshot={snapshot}/>:<Movement snapshot={snapshot} motion={motion}/>):
         view==='gallery'?<Gallery snapshot={snapshot} photo={photo}/>:
         view==='reflections'?<Reflections snapshot={snapshot}/>:
