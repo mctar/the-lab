@@ -22,8 +22,16 @@ const canShare = (p:Row,writeup:boolean,version:number) => writeup
   ? p.data.writeup===true && p.writeup_version===version
   : p.data.share===true && p.consent_version===version;
 const workshopRun = (s:Row) => requiredFlow({flowVersion:s.flow_version});
+function liveWallKind(s:Row){
+  if(s.stage_view!=='overview'&&s.stage_view!=='gallery')return null;
+  if(s.phase===2&&!s.ends_at&&s.remaining_ms==null)return 'build';
+  if(s.phase===4)return 'concept';
+  return null;
+}
 function onWorkshopWall(kind:string,s:Row){
   if(s.gallery_paused||s.closed)return false;
+  const liveKind=liveWallKind(s);
+  if(liveKind)return kind===liveKind;
   if(kind==='concept')return s.phase===5&&['comparison','gallery'].includes(s.stage_view);
   if(s.phase<2)return false;
   return s.stage_view==='first-ideas'||s.stage_view==='comparison'||s.stage_view==='gallery'&&s.first_revealed;
@@ -214,7 +222,7 @@ export async function createApp(opts: Options) {
   app.get('/v1/sessions/:id/assets/:asset',async(req,reply)=>{
     const id=idParam(req),c=await auth(req,id),asset=z.uuid().parse((req.params as any).asset);
     const [a]=await db.query(`SELECT a.*,p.data,p.consent_version AS room_version,p.writeup_version,
-      s.phase,s.stage_view,s.gallery_paused,s.closed,s.first_revealed
+      s.phase,s.stage_view,s.gallery_paused,s.closed,s.first_revealed,s.ends_at,s.remaining_ms
       FROM assets a JOIN participants p ON p.id=a.participant_id JOIN sessions s ON s.id=a.session_id
       WHERE a.id=$1 AND a.session_id=$2 AND p.run=s.run`,[asset,id]);
     if(!a) fail(404,'Photo unavailable.');
@@ -259,12 +267,14 @@ export async function createApp(opts: Options) {
       const showFirst=s.phase>=2&&s.stage_view==='first-ideas';
       const compare=s.phase===5&&s.stage_view==='comparison';
       const required=workshopRun(s);
-      const collected=required&&(host||!s.gallery_paused&&['first-ideas','comparison','gallery'].includes(s.stage_view))?await q(`
+      const uploadKind=liveWallKind(s);
+      const collectingForStage=!s.gallery_paused&&!s.closed&&(uploadKind||['first-ideas','comparison','gallery'].includes(s.stage_view));
+      const collected=required&&(host||collectingForStage)?await q(`
         SELECT sub.*,p.data,p.created_at AS joined_at,a.publication_withdrawn
         FROM submissions sub JOIN participants p ON p.id=sub.participant_id JOIN assets a ON a.id=sub.asset_id
         WHERE sub.session_id=$1 AND p.run=$2 AND a.purpose='workshop'
-          AND ($3::boolean OR (p.data->>'share'='true' AND sub.hidden=false))
-        ORDER BY sub.updated_at DESC`,[id,s.run,host]):[];
+          AND ($3::boolean OR (p.data->>'share'='true' AND sub.hidden=false AND ($4::text IS NULL OR sub.kind=$4)))
+        ORDER BY sub.updated_at DESC`,[id,s.run,host,uploadKind]):[];
       const rows=required?collected.filter(row=>row.data.share===true&&(host||onWorkshopWall(row.kind,s))):(!s.gallery_paused || host)?await q(`
         SELECT s.*,p.data->>'twist' AS twist FROM submissions s JOIN participants p ON p.id=s.participant_id
         WHERE s.session_id=$1 AND p.run=$2 AND (

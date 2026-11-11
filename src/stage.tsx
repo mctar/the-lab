@@ -1,6 +1,7 @@
 import React,{useEffect,useRef,useState,type CSSProperties} from 'react';
 import {CHANGE_CHOICES,CHANGE_QUESTION,IDEA_LIKING,INSTRUCTION_EASE,INSTRUCTION_EASE_CHOICES,SCALE,WORKSHOP_NAME,hasTimer,requiredFlow,revisedFlow,type Card,type Snapshot} from '../server/model';
-import {pairedMovement} from './stage-data';
+import {groupIdeaTitles,pairedMovement} from './stage-data';
+import {ComparisonWall,PhotoWall} from './stage-walls';
 import {RoundClock} from './round-clock';
 import {IDEA_LIKING_QUESTION,REFLECTION_PROMPTS,stageCue,STAGE_STEPS,WORKSHOP_BRIEF,WORKSHOP_PROMPT_LABEL} from './workshop-flow';
 import './stage.css';
@@ -103,14 +104,7 @@ function Reflections({snapshot}:{snapshot:Snapshot}){
 }
 
 function IdeaTiles({title,cards,index,limit}:{title:string;cards:Card[];index:number;limit:number}){
-  const grouped=new Map<string,{title:string;count:number}>();
-  for(const card of cards){
-    const key=card.title.trim().replace(/\s+/g,' ').toLowerCase();
-    const idea=grouped.get(key);
-    if(idea)idea.count++;
-    else grouped.set(key,{title:card.title,count:1});
-  }
-  const ideas=[...grouped.values()].sort((a,b)=>b.count-a.count);
+  const ideas=groupIdeaTitles(cards);
   const pages=Math.max(1,Math.ceil(ideas.length/limit)),page=index%pages;
   return <section className="idea-tiles">
     <div className="play-section-heading"><h2>{title}</h2><span>{cards.length} shared{pages>1?` · ${page+1}/${pages}`:''}</span></div>
@@ -142,43 +136,6 @@ function IdeaWall({snapshot,compare}:{snapshot:Snapshot;compare:boolean}){
   </div>;
 }
 
-function RevealCard({card,label,photo}:{card?:Card;label:string;photo:StageProps['photo']}){
-  return <article className="reveal-card">
-    <p className="reveal-label">{label}</p>
-    {card?<><h2>{card.title}</h2>{card.assetId&&<div className="reveal-photo">{photo(card,true)}</div>}
-      {card.description&&<p className="reveal-description">{card.description}</p>}
-      {card.mine&&<p className="reveal-change"><strong>What changed</strong> {card.mine}</p>}
-    </>:<p className="reveal-description">No original idea to display.</p>}
-  </article>;
-}
-
-function WorkshopReveal({snapshot,compare,photo}:{snapshot:Snapshot;compare:boolean;photo:StageProps['photo']}){
-  const [index,setIndex]=useState(0),[paused,setPaused]=useState(false);
-  const first=snapshot.ideas?.first||[];
-  const pairs=compare?snapshot.ideas?.comparisons:snapshot.ideas?.firstBuilds;
-  const count=pairs?.length||0,page=count?index%count:0,pair=pairs?.[page];
-  useEffect(()=>{
-    if(paused||count<2)return;
-    const timer=setInterval(()=>setIndex(i=>i+1),16000);
-    return()=>clearInterval(timer);
-  },[paused,count]);
-  if(snapshot.session.galleryPaused)return <p className="idea-empty">The reveal is paused.</p>;
-  if(!pair)return <IdeaTiles title={compare?'Final concept cards':'AI’s first suggestions'} cards={compare?snapshot.ideas?.final||[]:first} index={index} limit={12}/>;
-  const outcome='final' in pair?pair.final:pair.build;
-  return <div className="workshop-reveal">
-    <div className="reveal-pair">
-      <RevealCard card={pair.first} label="Original AI idea" photo={photo}/>
-      <RevealCard card={outcome} label={compare?'Final concept':'What the builder made'} photo={photo}/>
-    </div>
-    <div className="reveal-navigation"><span>{page+1} / {count} {compare?'final concepts':'first builds'}</span>{count>1&&<>
-      <button onClick={()=>{setPaused(true);setIndex(i=>(i+count-1)%count);}}>Previous</button>
-      <button onClick={()=>setPaused(value=>!value)} aria-pressed={paused}>{paused?'Resume rotation':'Pause rotation'}</button>
-      <button onClick={()=>{setPaused(true);setIndex(i=>i+1);}}>Next</button>
-    </>}</div>
-    {!compare&&<IdeaTiles title="Ideas across the room" cards={first} index={index} limit={8}/>}
-  </div>;
-}
-
 function ClosingChanges({snapshot}:{snapshot:Snapshot}){
   const counts=snapshot.biggestChange||{}, maximum=Math.max(1,...Object.values(counts));
   const answered=Object.values(counts).reduce((sum,n)=>sum+n,0);
@@ -198,26 +155,36 @@ export function StageScreen({snapshot,connected,error,qr,joinUrl,photo}:StagePro
   useEffect(()=>{if(snapshot.total>previousTotal.current){setJoinBurst(true);const timer=setTimeout(()=>setJoinBurst(false),4000);previousTotal.current=snapshot.total;return()=>clearTimeout(timer);}previousTotal.current=snapshot.total;},[snapshot.total]);
   useEffect(()=>{const key=(e:KeyboardEvent)=>{if(e.ctrlKey||e.metaKey||e.altKey||e.repeat||e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement)return;if(e.key.toLowerCase()==='m')toggle();if(e.key.toLowerCase()==='j')setJoinOpen(v=>!v);if(e.key==='Escape')setJoinOpen(false);};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[]);
   const rehearsal=/dry run|rehearsal|visual qa|load test/i.test(s.title);
-  const showSpotlight=!s.galleryPaused&&snapshot.gallery.length>0;
+  const showSpotlight=!required&&!s.galleryPaused&&snapshot.gallery.length>0;
   const timed=hasTimer(s)&&!s.closed;
   const gettingPlan=s.phase===0&&!s.closed;
   const instructions=view==='overview'||view==='final-exchange';
   const sideClock=timed&&!gettingPlan&&instructions;
-  const title=view==='first-ideas'?'What did the AI suggest?':view==='comparison'?'What did we change?':cue.title;
-  return <div className={`play-stage stage-scene-${lobby?'lobby':view}`} data-motion={motion?'on':'off'}>
+  const uploadKind=s.phase===2&&!timed?'build':s.phase===4?'concept':null;
+  const liveWall=required&&!s.closed&&(view==='gallery'||view==='overview'&&uploadKind!==null);
+  const compare=view==='first-ideas'||view==='comparison';
+  const wall=liveWall||required&&compare;
+  const firstReflection=view==='first-ideas'&&s.phase===2&&timed&&!s.exchange;
+  const title=firstReflection?'Reflect on the first build':view==='first-ideas'?'What did the AI suggest?':view==='comparison'?'What did we change?':cue.title;
+  const reminder=firstReflection?'Answer the reflection questions on your phone. Look for ideas that repeat.':
+    view==='first-ideas'?'Compare the AI ideas with what people built.':
+    view==='comparison'?(required?'Compare the ideas. Answer the closing question on your phone.':'What changed, and what prompted that decision?'):
+    liveWall?(uploadKind==='concept'?'Name your idea, add an image and say what changed.':uploadKind==='build'?'Photograph what you built. Unfinished builds count.':cue.steps[0]):cue.steps[0];
+  return <div className={`play-stage stage-scene-${lobby?'lobby':view}${wall?' stage-with-wall':''}`} data-motion={motion?'on':'off'}>
     <div className="play-background" aria-hidden="true"><Brick color={COLORS[0]}/><Brick color={COLORS[1]}/><Brick color={COLORS[2]}/></div>
     <header className="play-header"><div className="play-brand"><span className="brand-brick"><i/><i/></span><b>{WORKSHOP_NAME}</b>{rehearsal&&<span className="rehearsal-tag">DRY RUN</span>}</div><div className={'play-live'+(!connected||error?' reconnecting':'')} role="status"><i/>{connected&&!error?'LIVE':'RECONNECTING'}</div></header>
     <div className="play-title-row cue-title-row">
-      <div><p className="cue-kicker">{s.closed?'Workshop complete':`${cue.step+1} / ${STAGE_STEPS.length} · ${STAGE_STEPS[cue.step]}`}</p><h1>{title}</h1>{!lobby&&!instructions&&<p className="cue-reminder">{view==='first-ideas'?'Look for patterns in the ideas people shared.':view==='comparison'?(required?'What changed, and why? Answer the closing question on your phone.':'What changed, and what prompted that decision?'):cue.steps[0]}</p>}</div>
+      <div><p className="cue-kicker">{s.closed?'Workshop complete':`${cue.step+1} / ${STAGE_STEPS.length} · ${STAGE_STEPS[cue.step]}`}</p><h1>{title}</h1>{!lobby&&(!instructions||liveWall)&&<p className="cue-reminder">{reminder}</p>}</div>
       {!lobby&&(!instructions||gettingPlan)&&<RoundClock session={s} compact/>}
     </div>
     <main className="play-content">
       {lobby?<div className="stage-join">
         <div className="stage-join-copy"><h2>Scan with your phone</h2><p>Have your loose bricks and your AI app ready.</p><div className={'room-counter'+(joinBurst?' new-builder':'')}><strong><Count value={snapshot.total}/></strong><span>JOINED THE WORKSHOP</span></div></div>
         <div className="welcome-join"><a href={joinUrl} className="large-join-qr">{qr}</a><p>Or enter this room code</p><strong>{s.code}</strong></div>
-      </div>:view==='first-ideas'||view==='comparison'?(
-        required?<WorkshopReveal key={view} snapshot={snapshot} compare={view==='comparison'} photo={photo}/>:<IdeaWall key={view} snapshot={snapshot} compare={view==='comparison'}/>
+      </div>:compare?(
+        required?<ComparisonWall key={view} snapshot={snapshot} final={view==='comparison'} photo={photo}/>:<IdeaWall key={view} snapshot={snapshot} compare={view==='comparison'}/>
       ):
+        liveWall?<PhotoWall key={uploadKind||view} cards={snapshot.gallery} kind={uploadKind} photo={photo} paused={s.galleryPaused}/>:
         view==='results'?(revisedFlow(s)?<ClosingChanges snapshot={snapshot}/>:<Movement snapshot={snapshot} motion={motion}/>):
         view==='gallery'?<Gallery snapshot={snapshot} photo={photo}/>:
         view==='reflections'?<Reflections snapshot={snapshot}/>:

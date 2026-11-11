@@ -7,3 +7,21 @@ export function pairedMovement(transitions:number[][]){
   }
   return {before,after,total,moved,stayed:total-moved};
 }
+
+export function groupIdeaTitles(cards:readonly {title:string}[]){
+  const ideas=new Map<string,{title:string;count:number}>();
+  for(const card of cards){
+    const key=card.title.trim().replace(/\s+/g,' ').toLowerCase();
+    const previous=ideas.get(key);
+    if(previous)previous.count++;
+    else ideas.set(key,{title:card.title,count:1});
+  }
+  return [...ideas.values()].sort((a,b)=>b.count-a.count);
+}
+
+export function wallPage(total:number,size:number,index:number){
+  const count=Math.max(1,Math.ceil(total/size));
+  const current=Math.min(index,count-1);
+  const next=(current+1)%count;
+  return {count,current,preload:next===current?[current]:[current,next]};
+}

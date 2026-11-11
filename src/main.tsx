@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import QRCode from 'qrcode';
-import {CHANGE_CHOICES,CHANGE_QUESTION,PHASES,SCALE,WORKSHOP_NAME,hasTimer,revisedFlow,roundMinutes,type Snapshot,type Card,type PublicationPhoto} from '../server/model';
+import {CHANGE_CHOICES,CHANGE_QUESTION,SCALE,hasTimer,revisedFlow,type Snapshot,type Card,type PublicationPhoto} from '../server/model';
 import {API,request} from './client';
 import {media} from './media';
 import {FacilitatorTelemetry} from './telemetry';
@@ -9,8 +9,8 @@ import {StageScreen} from './stage';
 import {ResetSession} from './reset-session';
 import {Join,ParticipantApp} from './participant';
 import {Button,Shell,useLive} from './ui';
-import {RoundClock} from './round-clock';
-import {IDEA_LIKING_QUESTION,REFLECTION_PROMPTS,stageCue} from './workshop-flow';
+import {FacilitatorDesk} from './facilitator';
+import {IDEA_LIKING_QUESTION,REFLECTION_PROMPTS} from './workshop-flow';
 import {staffRoute,staffUrl,type StaffRole} from './staff-routes';
 import './prototype.css';
 import './style.css';
@@ -54,7 +54,7 @@ function GalleryCard({card,id,token,hide}:{card:Card;id:string;token:string;hide
 function PairedResults({snapshot}:{snapshot:Snapshot}){
   return <div className="transitions"><h2>How people moved <small>{snapshot.paired} paired answers</small></h2><table><caption>Rows: opening question. Columns: closing question.</caption><thead><tr><th>From / to</th>{SCALE.map(([label])=><th key={label}>{label}</th>)}</tr></thead><tbody>{snapshot.transitions.map((row,i)=><tr key={i}><th>{SCALE[i][0]}</th>{row.map((n,j)=><td key={j} style={{background:`rgba(230,83,185,${.08+.6*n/snapshot.paired})`}}>{n}</td>)}</tr>)}</tbody></table></div>;
 }
-const stageViews=[['overview','Instructions'],['results','Results'],['gallery','Gallery'],['reflections','Responses']] as const;
+const stageViews=[['overview','Instructions'],['results','Closing vote'],['gallery','Photo wall'],['reflections','Reflection responses']] as const;
 const phaseActions=['Open build plan','Start build','Capture builds','Start make it yours','Open concept cards','Open final reflection'];
 
 function Staff({id,role,token,base,onAuthorized}:{id:string;role:StaffRole;token:string;base:string;onAuthorized:(reusable:boolean)=>void}){
@@ -99,7 +99,7 @@ function Staff({id,role,token,base,onAuthorized}:{id:string;role:StaffRole;token
   }
   if(!snapshot)return <Shell><h1>{host?'Session controls':'Opening the big screen'}</h1><p role="alert">{error||'Connecting to the session…'}</p><Button onClick={()=>void refresh()}>Reconnect</Button></Shell>;
 
-  const s=snapshot.session,cue=stageCue(s),joinUrl=new URL('#/join?code='+s.code,import.meta.env.VITE_PUBLIC_URL||base).href,cards=snapshot.gallery;
+  const s=snapshot.session,joinUrl=new URL('#/join?code='+s.code,import.meta.env.VITE_PUBLIC_URL||base).href,cards=snapshot.gallery;
   if(!host)return <StageScreen key={s.run} snapshot={snapshot} connected={connected} error={error} joinUrl={joinUrl} qr={<QR url={joinUrl}/>} photo={(card,full)=><ProtectedPhoto key={card.assetId} id={id} token={token} asset={card.assetId!} alt={card.title||'A build from the room'} full={full}/>}/>;
 
   const capturing=s.phase===2&&!hasTimer(s);
@@ -109,7 +109,9 @@ function Staff({id,role,token,base,onAuthorized}:{id:string;role:StaffRole;token
   const skipping=collection?.noPlan??people.filter(person=>person.handedOff===false&&person.waitingForPhase===1).length;
   const closingVotes=Object.values(snapshot.biggestChange||{}).reduce((sum,n)=>sum+n,0);
   const next=capturing
-    ? revised&&!s.firstRevealed
+    ? collection
+      ? {label:'Start reflection · 2 min',patch:{timer:'reset',stageView:'first-ideas'}}
+      : revised&&!s.firstRevealed
       ? {label:'Reveal first ideas',patch:{stageView:'first-ideas'}}
       : {label:'Start reflection · 2 min',patch:{timer:'reset',stageView:'overview'}}
     : revised&&s.phase===2&&!s.exchange
@@ -119,52 +121,56 @@ function Staff({id,role,token,base,onAuthorized}:{id:string;role:StaffRole;token
     try{await request(`/v1/sessions/${id}/cards/${card.id}`,token,{hidden:!card.hidden},'PATCH');await refresh();}
     catch(e){setError((e as Error).message);}
   }
-  return <div className="host-screen">
-    <header className="screen-header"><div><p className="eyebrow">{WORKSHOP_NAME} · Facilitator</p><h1>{s.title}</h1></div><div className="room-code"><span>Room code</span><b>{s.code}</b><span>{snapshot.total} joined</span></div></header>
-    <div className="screen-status" role="status">{error||(!connected?'Live connection interrupted · refreshing automatically':`Live · ${new Date(snapshot.capturedAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`)}</div>
-    <div className="host-controls">
-      <section className="control-panel host-round">
-        <p className="eyebrow">Current audience instruction</p><h2>{cue.title}</h2>
-        <ol>{cue.steps.map(line=><li key={line}>{line}</li>)}</ol>
-        <RoundClock session={s} compact/>
-        {hasTimer(s)&&!s.closed&&<div className="row"><Button disabled={busy} onClick={()=>void control({timer:s.remainingMs!==null?'resume':'pause'})}>{s.remainingMs!==null?'Resume timer':'Pause timer'}</Button><Button disabled={busy} onClick={()=>void control({timer:'extend'})}>+1 minute</Button>{roundMinutes(s)&&<Button disabled={busy} onClick={()=>void control({timer:'reset'})}>Restart timer</Button>}</div>}
-        {revised&&s.phase===0&&<><p role="status"><strong>{ready} of {snapshot.total} have instructions</strong> · {skipping} reported no plan</p>{collection&&<p>While the room waits, explain that plans may miscount bricks. Ask everyone to build what they can.</p>}</>}
-        {revised&&capturing&&<p role="status">{collection?`${collection.builds} of ${snapshot.total} build photos saved · ${collection.firstIdeas} original ideas saved`:`${firstIdeas.filter(card=>!card.hidden).length} first ideas ready to reveal`}</p>}
-        {collection&&s.phase===4&&<p role="status">{collection.concepts} of {snapshot.total} concept cards saved</p>}
-        {collection&&s.phase===5&&<p role="status">{closingVotes} of {snapshot.total} closing votes saved</p>}
-        {next&&!s.closed&&<Button solid disabled={busy} onClick={()=>void control(next.patch)}>{next.label}</Button>}
-        <details><summary>Jump to a phase</summary><div className="phase-buttons">{PHASES.map((label,i)=><button type="button" key={label} disabled={busy||s.closed} className={s.phase===i?'active':''} onClick={()=>void control({phase:i})}><span>{i+1}</span>{label}</button>)}</div></details>
+  let progress='';
+  if(revised&&s.phase===0)progress=`${ready} of ${snapshot.total} have instructions · ${skipping} reported no plan`;
+  if(revised&&capturing)progress=collection
+    ? `${collection.builds} of ${snapshot.total} build photos saved · ${collection.firstIdeas} original ideas saved`
+    : `${firstIdeas.filter(card=>!card.hidden).length} first ideas ready to reveal`;
+  if(collection&&s.phase===4)progress=`${collection.concepts} of ${snapshot.total} concept cards saved`;
+  if(collection&&s.phase===5)progress=`${closingVotes} of ${snapshot.total} closing votes saved`;
+  const facilitatorNote=collection&&s.phase===0?'While people wait, explain that AI plans can miscount pieces. Ask everyone to build what they can.':undefined;
+  const automaticView=revised&&s.phase===5?'comparison':collection&&s.phase===2&&!capturing&&!s.exchange?'first-ideas':'overview';
+  const resetCardCount=collection?collection.firstIdeas+collection.builds+collection.concepts:cards.length+firstIdeas.length+(snapshot.publication?.length||0);
+
+  return <FacilitatorDesk key={s.run} snapshot={snapshot} connected={connected} error={error} busy={busy} next={next} progress={progress} facilitatorNote={facilitatorNote} control={control} panels={{
+    join:<div className="join-banner"><QR url={joinUrl}/><div><h2>Join the workshop</h2><a href={joinUrl}>Participant join link</a><p>Room code <strong>{s.code}</strong></p></div></div>,
+    participants:<FacilitatorTelemetry key={s.run} snapshot={snapshot}/>,
+    screen:<section className="control-panel"><h3>On the big screen</h3>
+      <p>The display follows the workshop stages. Use these controls to show a specific view or pause photos.</p>
+      <div className="row"><Button solid={s.stageView===automaticView} disabled={busy||s.closed} onClick={()=>void control({stageView:automaticView})}>Follow workshop</Button>
+        {stageViews.filter(([value])=>value!==automaticView&&(!collection||value!=='results'||s.phase===5)).map(([value,label])=><Button key={value} disabled={busy} solid={s.stageView===value} onClick={()=>void control({stageView:value})}>{label}</Button>)}
+        {revised&&s.firstRevealed&&s.phase>=2&&automaticView!=='first-ideas'&&<Button disabled={busy} solid={s.stageView==='first-ideas'} onClick={()=>void control({stageView:'first-ideas'})}>First ideas</Button>}
+        {collection&&s.phase===5&&!s.closed&&<Button disabled={busy} solid={s.stageView==='final-exchange'} onClick={()=>void control({stageView:'final-exchange'})}>Final neighbour exchange · 2 min</Button>}
+      </div>
+      <div className="row"><Button disabled={busy} onClick={()=>void control({galleryPaused:!s.galleryPaused})}>{s.galleryPaused?'Resume gallery':'Pause gallery'}</Button></div>
+    </section>,
+    results:<div className="desk-tool-stack">
+      {revised?<div className="reflection-results"><section><h2>{CHANGE_QUESTION}</h2>{CHANGE_CHOICES.map(choice=><div className="result-row" key={choice}>
+        <span>{choice}</span><meter min={0} max={Math.max(snapshot.total,1)} value={snapshot.biggestChange?.[choice]||0}/><b>{snapshot.biggestChange?.[choice]||0}</b>
+      </div>)}</section></div>:<div className="results">{snapshot.before.some(Boolean)&&<Distribution label="Opening question" counts={snapshot.before} total={snapshot.total} color="#26a7eb"/>}<Distribution label="Closing question" counts={snapshot.after} total={snapshot.total} color="#00ce62"/>{snapshot.paired>0&&<PairedResults snapshot={snapshot}/>}</div>}
+      <div className="reflection-results">{[[REFLECTION_PROMPTS[1],snapshot.instructionEase||{}],[IDEA_LIKING_QUESTION,snapshot.ideaLiking||{}],['Did the plan work?',snapshot.works],['How did it feel?',snapshot.feel]].filter(([,data])=>Object.keys(data).length).map(([title,data])=><section key={title as string}><h2>{title as string}</h2>{Object.entries(data as Record<string,number>).map(([label,n])=><div className="result-row" key={label}><span>{label}</span><meter min={0} max={Math.max(snapshot.total,1)} value={n}/><b>{n}</b></div>)}</section>)}</div>
+      <div className="row"><Button onClick={()=>void exportResults()}>Export results</Button></div>
+    </div>,
+    media:<div className="desk-tool-stack">
+      <section className="wall-section"><div className="distribution-head"><h2>{s.galleryPaused?'The gallery is paused':'On the wall'}</h2><span>{cards.length} shared builds and cards</span></div>
+        {cards.length?<div className="gallery">{cards.map(card=><GalleryCard key={card.id} card={card} id={id} token={token} hide={()=>void hideCard(card)}/>)}</div>:<p className="empty-wall">Shared builds and cards will appear here.</p>}
       </section>
-      <section className="control-panel"><h2>On the big screen</h2>
-        <p>Use Instructions to guide the room.</p>
-        <div className="row">{stageViews.filter(([value])=>!collection||value!=='results'||s.phase===5).map(([value,label])=><Button key={value} disabled={busy} solid={s.stageView===value} onClick={()=>void control({stageView:value})}>{label}</Button>)}
-          {revised&&s.firstRevealed&&s.phase>=2&&<Button disabled={busy} solid={s.stageView==='first-ideas'} onClick={()=>void control({stageView:'first-ideas'})}>First ideas</Button>}
-          {revised&&s.phase===5&&<Button disabled={busy} solid={s.stageView==='comparison'} onClick={()=>void control({stageView:'comparison'})}>Compare ideas</Button>}
-          {collection&&s.phase===5&&!s.closed&&<Button disabled={busy} solid={s.stageView==='final-exchange'} onClick={()=>void control({stageView:'final-exchange'})}>Final neighbour exchange · 2 min</Button>}
-        </div>
-        <div className="row"><Button disabled={busy} onClick={()=>void control({galleryPaused:!s.galleryPaused})}>{s.galleryPaused?'Resume gallery':'Pause gallery'}</Button><Button onClick={()=>void exportResults()}>Export results</Button></div>
-        <details><summary>Session status</summary><p>Closing stops new joins and submissions. Participants keep their drafts.</p><Button disabled={busy} onClick={()=>void control({closed:!s.closed})}>{s.closed?'Reopen session':'Close session'}</Button></details>
+      {revised&&firstIdeas.length>0&&<section className="wall-section"><h2>First ideas</h2><div className="gallery">{firstIdeas.map(card=><GalleryCard key={card.id} card={card} id={id} token={token} hide={()=>void hideCard(card)}/>)}</div></section>}
+      {revised&&<section className="control-panel"><h2>Images approved for gervilabs.com</h2>
+        <p>Use these images only in the public write-up for this experiment. Check permission again before publishing.</p>
+        {snapshot.publication?.length?<ul>{snapshot.publication.map(photo=><li key={photo.assetId}>
+          <Button onClick={()=>void downloadPublication(photo)}>{`Download ${photo.label.toLowerCase()} · ${photo.assetId.slice(0,8)}`}</Button>
+          <Button onClick={()=>void removePublication(photo)}>Remove write-up approval</Button>
+        </li>)}</ul>:<p>No images approved for the public write-up yet.</p>}
+      </section>}
+    </div>,
+    session:<div className="desk-tool-stack">
+      <section className="control-panel"><h3>Session status</h3><p>Closing stops new joins and submissions. Participants keep their drafts.</p>
+        <div className="row"><Button disabled={busy} onClick={()=>void control({closed:!s.closed})}>{s.closed?'Reopen session':'Close session'}</Button><Button onClick={()=>void exportResults()}>Export results</Button></div>
       </section>
-    </div>
-    <ResetSession session={s} participants={snapshot.total} cards={collection?collection.firstIdeas+collection.builds+collection.concepts:cards.length+firstIdeas.length+(snapshot.publication?.length||0)} token={token} onReset={refresh}/>
-    <FacilitatorTelemetry key={s.run} snapshot={snapshot}/>
-    <div className="join-banner"><QR url={joinUrl}/><div><h2>Join the workshop</h2><a href={joinUrl}>Participant join link</a><p>Share this link or show the QR on the big screen.</p></div></div>
-    {revised?<div className="reflection-results"><section><h2>{CHANGE_QUESTION}</h2>{CHANGE_CHOICES.map(choice=><div className="result-row" key={choice}>
-      <span>{choice}</span><meter min={0} max={Math.max(snapshot.total,1)} value={snapshot.biggestChange?.[choice]||0}/><b>{snapshot.biggestChange?.[choice]||0}</b>
-    </div>)}</section></div>:<div className="results">{snapshot.before.some(Boolean)&&<Distribution label="Opening question" counts={snapshot.before} total={snapshot.total} color="#26a7eb"/>}<Distribution label="Closing question" counts={snapshot.after} total={snapshot.total} color="#00ce62"/>{snapshot.paired>0&&<PairedResults snapshot={snapshot}/>}</div>}
-    <div className="reflection-results">{[[REFLECTION_PROMPTS[1],snapshot.instructionEase||{}],[IDEA_LIKING_QUESTION,snapshot.ideaLiking||{}],['Did the plan work?',snapshot.works],['How did it feel?',snapshot.feel]].filter(([,data])=>Object.keys(data).length).map(([title,data])=><section key={title as string}><h2>{title as string}</h2>{Object.entries(data as Record<string,number>).map(([label,n])=><div className="result-row" key={label}><span>{label}</span><meter min={0} max={Math.max(snapshot.total,1)} value={n}/><b>{n}</b></div>)}</section>)}</div>
-    <section className="wall-section"><div className="distribution-head"><h2>{s.galleryPaused?'The gallery is paused':'On the wall'}</h2><span>{cards.length} shared builds and cards</span></div>
-      {cards.length?<div className="gallery">{cards.map(card=><GalleryCard key={card.id} card={card} id={id} token={token} hide={()=>void hideCard(card)}/>)}</div>:<p className="empty-wall">Shared builds and cards will appear here.</p>}
-    </section>
-    {revised&&firstIdeas.length>0&&<section className="wall-section"><h2>First ideas</h2><div className="gallery">{firstIdeas.map(card=><GalleryCard key={card.id} card={card} id={id} token={token} hide={()=>void hideCard(card)}/>)}</div></section>}
-    {revised&&<section className="control-panel"><h2>Images approved for gervilabs.com</h2>
-      <p>Use these images only in the public write-up for this experiment. Check permission again before publishing.</p>
-      {snapshot.publication?.length?<ul>{snapshot.publication.map(photo=><li key={photo.assetId}>
-        <Button onClick={()=>void downloadPublication(photo)}>{`Download ${photo.label.toLowerCase()} · ${photo.assetId.slice(0,8)}`}</Button>
-        <Button onClick={()=>void removePublication(photo)}>Remove write-up approval</Button>
-      </li>)}</ul>:<p>No images approved for the public write-up yet.</p>}
-    </section>}
-  </div>;
+      <ResetSession session={s} participants={snapshot.total} cards={resetCardCount} token={token} onReset={refresh}/>
+    </div>,
+  }}/>;
 }
 function App(){
   const [href,setHref]=useState(location.href);

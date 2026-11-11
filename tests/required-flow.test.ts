@@ -79,7 +79,10 @@ test('required submissions count for everyone and each join choice controls its 
     await submit(builder,'build',{title:'First build',assetId:build});
     const approved=await upload(publicationOnly);
     await submit(publicationOnly,'build',{title:'First build',assetId:approved});
-    await control({stageView:'first-ideas'});
+    assert.deepEqual((await stage()).gallery.map((card:{assetId:string})=>card.assetId),[build]);
+    await access(build,room.stageToken,200);
+    await access(original,room.stageToken,404);
+    await control({stageView:'first-ideas',timer:'reset'});
     assert.equal((await stage()).ideas.firstBuilds.length,1);
     assert.equal((await stage()).ideas.firstBuilds[0].first.assetId,original);
     await access(original,room.stageToken,200);
@@ -101,7 +104,9 @@ test('required submissions count for everyone and each join choice controls its 
     const final=await upload(builder);
     await submit(builder,'concept',{title:'Neighbour relay',description:'A game for two.',assetId:final},400);
     await submit(builder,'concept',{title:'Neighbour relay',description:'A game for two.',mine:'I added turns.',assetId:final});
-    await access(final,room.stageToken,404);
+    assert.deepEqual((await stage()).gallery.map((card:{assetId:string})=>card.assetId),[final]);
+    await access(final,room.stageToken,200);
+    await access(original,room.stageToken,404);
     const last=await control({phase:5});
     assert.equal(last.stageView,'comparison');
     assert.equal((await stage()).ideas.comparisons[0].final.mine,'I added turns.');
