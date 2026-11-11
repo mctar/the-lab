@@ -58,7 +58,7 @@ export const cardInput = z.object({
 export type Answers = z.infer<typeof answerPatch>;
 export type CardKind = z.infer<typeof cardInput>['kind'];
 export const isWriteupKind = (kind:CardKind) => kind==='writeup-build'||kind==='writeup-concept';
-export type Session = { id: string; code: string; title: string; run:number; phase: number; revision: number; closed: boolean; galleryPaused: boolean; stageView: string; endsAt: string | null; remainingMs: number | null; serverTime: string; flowVersion?:number; firstRevealed?:boolean; exchange?:boolean };
+export type Session = { id: string; code: string; title: string; run:number; phase: number; revision: number; closed: boolean; galleryPaused: boolean; stageView: string; endsAt: string | null; remainingMs: number | null; serverTime: string; flowVersion?:number; firstRevealed?:boolean; exchange?:boolean; reusable?:boolean };
 export const hasTimer = (session: Pick<Session, 'endsAt'|'remainingMs'>) => session.endsAt !== null || session.remainingMs !== null;
 export const requiredFlow = (session:Pick<Session,'flowVersion'>) => session.flowVersion===CURRENT_FLOW_VERSION;
 export const revisedFlow = (session:Pick<Session,'flowVersion'>) => session.flowVersion===2||requiredFlow(session);

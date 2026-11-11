@@ -53,9 +53,9 @@ Connect using `ssh hugin`. The Lab lives in `~/experiments/the-lab`. Keep the ex
 4. Add `build-api.btrbot.com → http://127.0.0.1:4181` to the existing named Cloudflare Tunnel, preserving all other routes. Validate the configuration, create the DNS route, and restart the tunnel service only when ready. No database port is exposed.
 5. Confirm the public `/health` endpoint, CORS from `https://brick.btrbot.com` and `https://mctar.github.io`, and SSE through the real tunnel. Allow SSE streaming and disable caching for API responses. Do not put an interactive login/challenge in front of the participant API.
 
-The API container is limited to two CPU cores and 1 GB memory. Image work is bounded; a busy upload gets a retryable 503 while text responses remain available. Both containers restart automatically, and images survive container replacement. Tokens are hashed, session-scoped, role-limited, and expire (participants after two days; host/stage after 30 days). The admission code does not grant screen or host access.
+The API container is limited to two CPU cores and 1 GB memory. Image work is bounded; a busy upload gets a retryable 503 while text responses remain available. Both containers restart automatically, and images survive container replacement. Tokens are hashed, session-scoped, and role-limited. Participant access expires after two days, and standard room staff access after 30 days. In a reusable room, facilitator access lasts a year and the private projector link stays valid until revoked. The admission code only grants participant access.
 
-To create a session on Hugin without printing administrator credentials, use the trusted host's environment or call the provisioning endpoint from inside the API container. `scripts/session.ts` is a convenience for a checkout with development dependencies; set `API_URL`, `ADMIN_TOKEN`, and `FRONTEND_URL` to the deployed values. Store the resulting private links outside Git. QR codes contain only the public participant join link.
+To create a session on Hugin without printing administrator credentials, use the trusted host's environment or call the provisioning endpoint from inside the API container. `scripts/session.ts` is a convenience for a checkout with development dependencies. Set `API_URL`, `ADMIN_TOKEN`, and `FRONTEND_URL` to the deployed values. To provision a reusable room, add `--reusable` to the session command or pass `reusable: true` to the admin endpoint. Store the resulting private links outside Git. QR codes contain only the public participant join link.
 
 ## GitHub Pages
 
@@ -87,6 +87,8 @@ Votes land as coloured bricks. The results view shows paths for matched opening 
 ## Running a rehearsal
 
 Use the [facilitator guide](FACILITATOR-GUIDE.md) for the room sequence. On the workshop Mac, the deployed rehearsal links are in `.runtime/dry-run-access.json` and the original event links are in `.runtime/session-access.json`. Locally provisioned rooms use `.runtime/session-<code>.json`. Use the full staff links in a fresh browser. Display only the participant QR or join link to the audience.
+
+Open the reusable room's private facilitator link once in your browser, then bookmark the short [facilitator page](https://brick.btrbot.com/facilitator/). The browser remembers that room even after you open a separate rehearsal. Use the full private projector permalink on a new computer or browser. The short [big-screen page](https://brick.btrbot.com/big-screen/) returns to the saved room on a browser you've already authorized. Staff tokens stay in the URL fragment and the app removes them from the address bar after authorization. Existing `#/host/…` and `#/stage/…` links still open their rooms.
 
 Check all three views together in a disposable room. Try the phone’s camera and camera-roll options, send the photo and prompt to an AI app, and check the manual path when the share sheet drops an item. Check the countdown on both screens, capture a build before starting reflection, and verify that only opted-in work appears. Check that the stage cues are readable from the back row. Use the confirmed reset below for another clean pass.
 

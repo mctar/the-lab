@@ -1,11 +1,14 @@
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { WORKSHOP_NAME } from '../server/model.js';
+import { staffUrl } from '../src/staff-routes.js';
 const api=process.env.API_URL||'http://127.0.0.1:4181';
 const token=process.env.ADMIN_TOKEN||(await readFile('.runtime/admin-token','utf8')).trim();
-const response=await fetch(api+'/v1/sessions',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({title:process.argv[2]||WORKSHOP_NAME})});
+const args=process.argv.slice(2);
+const reusable=args.includes('--reusable'),title=args.find(arg=>arg!=='--reusable')||WORKSHOP_NAME;
+const response=await fetch(api+'/v1/sessions',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({title,reusable})});
 if(!response.ok)throw new Error(await response.text());
 const session=await response.json();const base=(process.env.FRONTEND_URL||'http://127.0.0.1:5173/').replace(/\/$/,'')+'/';
-const links={id:session.id,code:session.code,title:session.title,join:base+'#/join?code='+session.code,host:base+'#/host/'+session.id+'?access='+session.hostToken,stage:base+'#/stage/'+session.id+'?access='+session.stageToken};
+const links={id:session.id,code:session.code,title:session.title,join:base+'#/join?code='+session.code,host:staffUrl(base,'host',session.id,session.hostToken),stage:staffUrl(base,'stage',session.id,session.stageToken)};
 await mkdir('.runtime',{recursive:true});const path=resolve('.runtime/session-'+session.code+'.json');await writeFile(path,JSON.stringify(links,null,2),{mode:0o600});
 console.log('Session code:',session.code);console.log('Join:',links.join);console.log('Private host and screen links saved to',path);

@@ -36,7 +36,7 @@ export async function createApp(opts: Options) {
     id:r.id, code:r.code, title:r.title, run:r.run, phase:r.phase, revision:r.revision, closed:r.closed, galleryPaused:r.gallery_paused,
     stageView:r.stage_view, endsAt:r.ends_at ? new Date(r.ends_at).toISOString() : null,
     remainingMs:r.remaining_ms == null ? null : Number(r.remaining_ms), serverTime:new Date().toISOString(),
-    flowVersion:r.flow_version, firstRevealed:r.first_revealed, exchange:r.exchange
+    flowVersion:r.flow_version, firstRevealed:r.first_revealed, exchange:r.exchange, reusable:r.reusable
   });
   const db = opts.db || await database(opts.databaseUrl, join(opts.dataDir, 'database'));
   const photos = join(opts.dataDir, 'photos'); await mkdir(photos, { recursive:true });
@@ -88,13 +88,16 @@ export async function createApp(opts: Options) {
   app.post('/v1/sessions',async(req,reply)=>{
     const token=req.headers.authorization?.replace(/^Bearer /,'') || '';
     if(!opts.adminToken || !timingSafeEqual(Buffer.from(hash(token)),Buffer.from(hash(opts.adminToken)))) fail(401,'Not authorized.');
-    const b=z.object({title:z.string().trim().min(1).max(120),code:z.string().regex(/^[A-Z2-9]{6,12}$/).optional(),flowVersion:z.union([z.literal(1),z.literal(2),z.literal(CURRENT_FLOW_VERSION)]).default(CURRENT_FLOW_VERSION)}).parse(req.body);
+    const b=z.object({title:z.string().trim().min(1).max(120),code:z.string().regex(/^[A-Z2-9]{6,12}$/).optional(),flowVersion:z.union([z.literal(1),z.literal(2),z.literal(CURRENT_FLOW_VERSION)]).default(CURRENT_FLOW_VERSION),reusable:z.boolean().default(false)}).parse(req.body);
     const id=randomUUID(), code=b.code || randomBytes(5).toString('hex').toUpperCase().replace(/[01]/g,'A');
     const hostToken=randomBytes(32).toString('base64url'),stageToken=randomBytes(32).toString('base64url');
     await db.transaction(async q=>{
-      await q('INSERT INTO sessions(id,code,title,flow_version) VALUES($1,$2,$3,$4)',[id,code,b.title,b.flowVersion]);
-      for(const [role,t] of [['host',hostToken],['stage',stageToken]]) await q("INSERT INTO credentials(hash,session_id,role,expires_at) VALUES($1,$2,$3,now()+interval '30 days')",[hash(t),id,role]);
-    }); reply.code(201); return {id,code,title:b.title,hostToken,stageToken};
+      await q('INSERT INTO sessions(id,code,title,flow_version,reusable) VALUES($1,$2,$3,$4,$5)',[id,code,b.title,b.flowVersion,b.reusable]);
+      for(const [role,t] of [['host',hostToken],['stage',stageToken]]) await q(`
+        INSERT INTO credentials(hash,session_id,role,expires_at)
+        VALUES($1,$2,$3,CASE WHEN $4::boolean AND $3='stage' THEN 'infinity'::timestamptz
+          WHEN $4::boolean THEN now()+interval '1 year' ELSE now()+interval '30 days' END)`,[hash(t),id,role,b.reusable]);
+    }); reply.code(201); return {id,code,title:b.title,reusable:b.reusable,hostToken,stageToken};
   });
   app.post('/v1/join',async(req)=>{
     // A venue NAT can carry every participant. Admission budget accommodates the whole room.

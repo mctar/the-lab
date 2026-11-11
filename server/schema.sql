@@ -49,6 +49,7 @@ CREATE INDEX IF NOT EXISTS participant_session_run ON participants(session_id,ru
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS flow_version integer NOT NULL DEFAULT 1;
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS first_revealed boolean NOT NULL DEFAULT false;
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS exchange boolean NOT NULL DEFAULT false;
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS reusable boolean NOT NULL DEFAULT false;
 ALTER TABLE participants ADD COLUMN IF NOT EXISTS writeup_version integer NOT NULL DEFAULT 0;
 ALTER TABLE assets ADD COLUMN IF NOT EXISTS purpose text NOT NULL DEFAULT 'room';
 ALTER TABLE assets ADD COLUMN IF NOT EXISTS publication_withdrawn boolean NOT NULL DEFAULT false;

@@ -11,6 +11,7 @@ import {Join,ParticipantApp} from './participant';
 import {Button,Shell,useLive} from './ui';
 import {RoundClock} from './round-clock';
 import {IDEA_LIKING_QUESTION,REFLECTION_PROMPTS,stageCue} from './workshop-flow';
+import {staffRoute,staffUrl,type StaffRole} from './staff-routes';
 import './prototype.css';
 import './style.css';
 
@@ -56,10 +57,12 @@ function PairedResults({snapshot}:{snapshot:Snapshot}){
 const stageViews=[['overview','Instructions'],['results','Results'],['gallery','Gallery'],['reflections','Responses']] as const;
 const phaseActions=['Open build plan','Start build','Capture builds','Start make it yours','Open concept cards','Open final reflection'];
 
-function Staff({id,role,token}:{id:string;role:'host'|'stage';token:string}){
+function Staff({id,role,token,base,onAuthorized}:{id:string;role:StaffRole;token:string;base:string;onAuthorized:(reusable:boolean)=>void}){
   const [snapshot,setSnapshot]=useState<Snapshot|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false);
   const host=role==='host';
   const refresh=()=>request<Snapshot>(`/v1/sessions/${id}/snapshot`,token).then(next=>{
+    if(host!==Boolean(next.telemetry))throw new Error('Open the private link for this staff view.');
+    onAuthorized(next.session.reusable===true);
     setSnapshot(previous=>previous&&(previous.session.run>next.session.run||previous.session.run===next.session.run&&previous.capturedAt>next.capturedAt)?previous:next);
     setError('');
   }).catch(e=>setError(e.message));
@@ -96,7 +99,7 @@ function Staff({id,role,token}:{id:string;role:'host'|'stage';token:string}){
   }
   if(!snapshot)return <Shell><h1>{host?'Session controls':'Opening the big screen'}</h1><p role="alert">{error||'Connecting to the session…'}</p><Button onClick={()=>void refresh()}>Reconnect</Button></Shell>;
 
-  const s=snapshot.session,cue=stageCue(s),joinUrl=new URL('#/join?code='+s.code,import.meta.env.VITE_PUBLIC_URL||location.href).href,cards=snapshot.gallery;
+  const s=snapshot.session,cue=stageCue(s),joinUrl=new URL('#/join?code='+s.code,import.meta.env.VITE_PUBLIC_URL||base).href,cards=snapshot.gallery;
   if(!host)return <StageScreen key={s.run} snapshot={snapshot} connected={connected} error={error} joinUrl={joinUrl} qr={<QR url={joinUrl}/>} photo={(card,full)=><ProtectedPhoto key={card.assetId} id={id} token={token} asset={card.assetId!} alt={card.title||'A build from the room'} full={full}/>}/>;
 
   const capturing=s.phase===2&&!hasTimer(s);
@@ -163,5 +166,40 @@ function Staff({id,role,token}:{id:string;role:'host'|'stage';token:string}){
     </section>}
   </div>;
 }
-function App(){const [route,setRoute]=useState(location.hash);useEffect(()=>{const change=()=>setRoute(location.hash);addEventListener('hashchange',change);return()=>removeEventListener('hashchange',change);},[]);const [path,query]=route.replace(/^#\/?/,'').split('?'),[role,id]=path.split('/');if((role==='host'||role==='stage')&&id){const access=new URLSearchParams(query).get('access');if(access){localStorage.setItem(`bwt:${role}:${id}`,access);history.replaceState(null,'',location.pathname+location.search+`#/${role}/${id}`);}const token=access||localStorage.getItem(`bwt:${role}:${id}`);return token?<Staff key={id+role} id={id} role={role} token={token}/>:<Shell><h1>Your private link.</h1><p>Open the facilitator or screen link supplied with this session.</p></Shell>;}if(role==='session'&&id)return <ParticipantApp key={id} id={id}/>;return <Join key={route}/>;}
+function App(){
+  const [href,setHref]=useState(location.href);
+  useEffect(()=>{
+    const change=()=>setHref(location.href);
+    window.addEventListener('hashchange',change);
+    window.addEventListener('popstate',change);
+    return()=>{
+      window.removeEventListener('hashchange',change);
+      window.removeEventListener('popstate',change);
+    };
+  },[]);
+  const url=new URL(href),staff=staffRoute(url);
+  if(staff){
+    const {role,access,base}=staff;
+    const reusableKey=`bwt:reusable:${role}`,lastKey=`bwt:last:${role}`;
+    const id=staff.id||localStorage.getItem(reusableKey)||localStorage.getItem(lastKey)||'';
+    const roomKey=`bwt:${role}:${id}`,token=access||localStorage.getItem(roomKey);
+    if(!token||!/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(id)){
+      const name=role==='host'?'facilitator':'big screen';
+      return <Shell><h1>{role==='host'?'Facilitator':'Big screen'}</h1>
+        <p>Open the private {name} link for your room once on this browser. Then use this address to return.</p>
+      </Shell>;
+    }
+    const remember=(reusable:boolean)=>{
+      if(location.href!==href)return;
+      if(access)localStorage.setItem(roomKey,access);
+      if(reusable)localStorage.setItem(reusableKey,id);
+      localStorage.setItem(lastKey,id);
+      history.replaceState(history.state,'',staffUrl(base,role,id));
+    };
+    return <Staff key={role+id+token} id={id} role={role} token={token} base={base} onAuthorized={remember}/>;
+  }
+  const [role,id]=url.hash.replace(/^#\/?/,'').split('?')[0].split('/');
+  if(role==='session'&&id)return <ParticipantApp key={id} id={id}/>;
+  return <Join key={url.hash}/>;
+}
 createRoot(document.getElementById('root')!).render(<App/>);

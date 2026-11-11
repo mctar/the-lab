@@ -2,7 +2,9 @@
 
 ## Before people arrive
 
-Open the private facilitator link on your laptop and the big-screen link on the projection computer. Select **Full screen** and leave the room in the lobby. Participants join by scanning the QR or entering the room code at [The Lab](https://brick.btrbot.com/).
+On your laptop, open the private facilitator link once, then bookmark the [facilitator page](https://brick.btrbot.com/facilitator/). On the projection computer, open the full private big-screen permalink and select **Full screen**. On a browser that already opened the permalink, you can use the [big-screen page](https://brick.btrbot.com/big-screen/).
+
+Before each run in the reusable room, use **Reset all…** if there’s a previous run. Leave the projector in the lobby. Participants join by scanning the QR or entering the room code at [The Lab](https://brick.btrbot.com/).
 
 Set out one matching brick kit per person, with spare pieces available. Confirm the piece list and count for your event when you pack the kits. Set seats so each person has a neighbour they can talk to. Check the phone, dashboard and projector in a disposable room.
 
