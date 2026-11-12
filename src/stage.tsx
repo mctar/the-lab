@@ -170,6 +170,12 @@ export function StageScreen({snapshot,connected,error,qr,joinUrl,photo}:StagePro
     view==='first-ideas'?'Compare the AI ideas with what people built.':
     view==='comparison'?(required?'Compare the ideas. Answer the closing question on your phone.':'What changed, and what prompted that decision?'):
     liveWall?(uploadKind==='concept'?'Name your idea, add an image and say what changed.':uploadKind==='build'?'Photograph what you built. Unfinished builds count.':cue.steps[0]):cue.steps[0];
+  const joinPage=new URL(joinUrl);
+  joinPage.hash='';
+  const manualJoin=<div className="stage-manual-join">
+    <p>Or go to <a href={joinPage.href}>{joinPage.href.replace(/\/$/,'')}</a></p>
+    <p>Enter room code <strong>{s.code}</strong></p>
+  </div>;
   return <div className={`play-stage stage-scene-${lobby?'lobby':view}${wall?' stage-with-wall':''}`} data-motion={motion?'on':'off'}>
     <div className="play-background" aria-hidden="true"><Brick color={COLORS[0]}/><Brick color={COLORS[1]}/><Brick color={COLORS[2]}/></div>
     <header className="play-header"><div className="play-brand"><span className="brand-brick"><i/><i/></span><b>{WORKSHOP_NAME}</b>{rehearsal&&<span className="rehearsal-tag">DRY RUN</span>}</div><div className={'play-live'+(!connected||error?' reconnecting':'')} role="status"><i/>{connected&&!error?'LIVE':'RECONNECTING'}</div></header>
@@ -180,7 +186,7 @@ export function StageScreen({snapshot,connected,error,qr,joinUrl,photo}:StagePro
     <main className="play-content">
       {lobby?<div className="stage-join">
         <div className="stage-join-copy"><h2>Scan with your phone</h2><p>Have your loose bricks and your AI app ready.</p><div className={'room-counter'+(joinBurst?' new-builder':'')}><strong><Count value={snapshot.total}/></strong><span>JOINED THE WORKSHOP</span></div></div>
-        <div className="welcome-join"><a href={joinUrl} className="large-join-qr">{qr}</a><p>Or enter this room code</p><strong>{s.code}</strong></div>
+        <div className="welcome-join"><a href={joinUrl} className="large-join-qr">{qr}</a>{manualJoin}</div>
       </div>:compare?(
         required?<ComparisonWall key={view} snapshot={snapshot} final={view==='comparison'} photo={photo}/>:<IdeaWall key={view} snapshot={snapshot} compare={view==='comparison'}/>
       ):
@@ -196,6 +202,6 @@ export function StageScreen({snapshot,connected,error,qr,joinUrl,photo}:StagePro
     <footer className="play-footer"><div className="phase-trail" aria-label="Session progress">{STAGE_STEPS.map((label,i)=><span key={label} className={cue.step===i?'current':cue.step>i?'past':''}><i>{i+1}</i><b>{label}</b></span>)}</div><div className="play-footer-actions"><button onClick={toggle} aria-pressed={motionPaused} disabled={reducedMotion}>{reducedMotion?'Reduced motion':motionPaused?'▶ Motion':'Ⅱ Motion'}</button><button onClick={()=>document.documentElement.requestFullscreen?.()}>⛶ Full screen</button><span className="stage-updated">Updated {new Date(snapshot.capturedAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</span></div></footer>
     {!lobby&&!s.closed&&<button className="play-join-tab" onClick={()=>setJoinOpen(true)} aria-label="Show the join QR code">{qr}<span>JOIN<strong>{s.code}</strong></span></button>}
     {error&&<p className="play-connection-note" role="status">{error} · Showing the last saved room picture.</p>}
-    {joinOpen&&!s.closed&&<div className="play-join-overlay" role="dialog" aria-modal="true" aria-label="Join the session"><button className="join-overlay-close" onClick={()=>setJoinOpen(false)} aria-label="Close join code">×</button><p className="play-eyebrow">{WORKSHOP_NAME}</p><h2>Join the workshop</h2><a href={joinUrl}>{qr}</a><strong>{s.code}</strong><span>Scan the QR or enter the code on your phone.</span></div>}
+    {joinOpen&&!s.closed&&<div className="play-join-overlay" role="dialog" aria-modal="true" aria-label="Join the session"><button className="join-overlay-close" onClick={()=>setJoinOpen(false)} aria-label="Close join code">×</button><p className="play-eyebrow">Scan with your phone</p><h2>Join the workshop</h2><a href={joinUrl}>{qr}</a>{manualJoin}</div>}
   </div>;
 }
