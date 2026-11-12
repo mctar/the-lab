@@ -1,8 +1,8 @@
 export type StaffRole = 'host' | 'stage';
 type StaffRoute = {role:StaffRole;id:string;access:string|null;base:string};
 
-const staffPaths: Record<StaffRole, string> = {host:'facilitator',stage:'big-screen'};
-const staffPathPattern = /\/(facilitator|big-screen)(?:\/(?:index\.html)?)?$/;
+const staffPaths: Record<StaffRole, string> = {host:'facilitator',stage:'bigscreen'};
+const staffPathPattern = /\/(facilitator|bigscreen|big-screen)(?:\/(?:index\.html)?)?$/;
 
 export function staffUrl(base:string,role:StaffRole,id?:string,access?:string){
   const url=new URL(staffPaths[role]+'/',base);

@@ -2,7 +2,7 @@
 
 ## Before people arrive
 
-On your laptop, open the private facilitator link once, then bookmark the [facilitator page](https://brick.btrbot.com/facilitator/). On the projection computer, open the full private big-screen permalink and select **Full screen**. On a browser that already opened the permalink, you can use the [big-screen page](https://brick.btrbot.com/big-screen/).
+On your laptop, open the private facilitator link once, then bookmark the [facilitator page](https://brick.btrbot.com/facilitator/). On a new projection browser, open the private projector link from the access card once. Return to the projector at [brick.btrbot.com/bigscreen](https://brick.btrbot.com/bigscreen) and select **Full screen**.
 
 Before each run in the reusable room, use **Room tools → Session → Reset all…** if there’s a previous run. Leave the projector in the lobby. Participants join by scanning the QR or entering the room code at [The Lab](https://brick.btrbot.com/).
 

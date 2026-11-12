@@ -17,6 +17,9 @@ test('short staff routes round-trip credentials and accept older hash links',()=
     assert.deepEqual(staffRoute(new URL(base+'#/'+role+'/'+id+'?access='+access)),{role,id,access,base});
     assert.deepEqual(staffRoute(new URL(staffUrl(base,role))),{role,id:'',access:null,base});
   }
+  assert.equal(staffUrl(base,'stage'),base+'bigscreen/');
+  assert.deepEqual(staffRoute(new URL(base+'bigscreen')),{role:'stage',id:'',access:null,base});
+  assert.deepEqual(staffRoute(new URL(base+'big-screen/#/'+id+'?access='+access)),{role:'stage',id,access,base});
   assert.equal(staffRoute(new URL(base+'#/join?code=ABCDEF')),null);
 });
 

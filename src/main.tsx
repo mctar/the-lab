@@ -201,7 +201,7 @@ function App(){
       if(access)localStorage.setItem(roomKey,access);
       if(reusable)localStorage.setItem(reusableKey,id);
       localStorage.setItem(lastKey,id);
-      history.replaceState(history.state,'',staffUrl(base,role,id));
+      history.replaceState(history.state,'',staffUrl(base,role,reusable&&role==='stage'?undefined:id));
     };
     return <Staff key={role+id+token} id={id} role={role} token={token} base={base} onAuthorized={remember}/>;
   }
