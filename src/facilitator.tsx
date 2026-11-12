@@ -13,7 +13,7 @@ const activityGroups=[
   {label:'Final reflection',steps:[8]}, {label:'Finished',steps:[9]},
 ];
 const tools=[
-  ['join','Join QR'], ['participants','Participants'], ['screen','Big screen'],
+  ['join','Join QR'], ['participants','Participants'],
   ['results','Results'], ['media','Images'], ['session','Session'],
 ] as const;
 type Tool=typeof tools[number][0];
@@ -26,10 +26,11 @@ type Props={
   progress:string;
   facilitatorNote?:string;
   control:(patch:Record<string,unknown>)=>Promise<void>;
+  projectorViews:ReactNode;
   panels:Record<Tool,ReactNode>;
 };
 
-export function FacilitatorDesk({snapshot,connected,error,busy,next,progress,facilitatorNote,control,panels}:Props){
+export function FacilitatorDesk({snapshot,connected,error,busy,next,progress,facilitatorNote,control,projectorViews,panels}:Props){
   const {session,telemetry,total}=snapshot,cue=stageCue(session);
   const [tool,setTool]=useState<Tool>('session'),[toolsOpen,setToolsOpen]=useState(false);
   const dialog=useRef<HTMLDialogElement>(null);
@@ -59,6 +60,11 @@ export function FacilitatorDesk({snapshot,connected,error,busy,next,progress,fac
       {stages.map((label,i)=><button type="button" key={label} aria-current={session.phase===i-1?'step':undefined}
         disabled={busy||session.closed||session.phase===i-1} onClick={()=>void control({phase:i-1})}>{label}</button>)}
     </nav>
+    <section className="desk-projector" aria-labelledby="desk-projector-label">
+      <h2 id="desk-projector-label" className="desk-label">Big screen</h2>
+      <div className="desk-projector-views">{projectorViews}</div>
+      <Button disabled={busy} onClick={()=>void control({galleryPaused:!session.galleryPaused})}>{session.galleryPaused?'Resume gallery':'Pause gallery'}</Button>
+    </section>
     <main className="desk-main">
       <section className="desk-panel desk-current" aria-labelledby="desk-now">
         <div className="desk-current-top">

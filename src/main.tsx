@@ -131,19 +131,20 @@ function Staff({id,role,token,base,onAuthorized}:{id:string;role:StaffRole;token
   const facilitatorNote=collection&&s.phase===0?'While people wait, explain that AI plans can miscount pieces. Ask everyone to build what they can.':undefined;
   const automaticView=revised&&s.phase===5?'comparison':collection&&s.phase===2&&!capturing&&!s.exchange?'first-ideas':'overview';
   const resetCardCount=collection?collection.firstIdeas+collection.builds+collection.concepts:cards.length+firstIdeas.length+(snapshot.publication?.length||0);
+  const projectorViews:{value:string;label:string;disabled:boolean}[]=[
+    {value:automaticView,label:'Follow workshop',disabled:s.closed},
+    ...stageViews.filter(([value])=>value!==automaticView&&(!collection||value!=='results'||s.phase===5))
+      .map(([value,label])=>({value,label,disabled:false})),
+  ];
+  if(revised&&s.firstRevealed&&s.phase>=2&&automaticView!=='first-ideas')projectorViews.push({value:'first-ideas',label:'First ideas',disabled:false});
+  if(collection&&s.phase===5&&!s.closed)projectorViews.push({value:'final-exchange',label:'Final neighbour exchange · 2 min',disabled:false});
 
-  return <FacilitatorDesk key={s.run} snapshot={snapshot} connected={connected} error={error} busy={busy} next={next} progress={progress} facilitatorNote={facilitatorNote} control={control} panels={{
+  return <FacilitatorDesk key={s.run} snapshot={snapshot} connected={connected} error={error} busy={busy} next={next} progress={progress} facilitatorNote={facilitatorNote} control={control}
+    projectorViews={projectorViews.map(({value,label,disabled})=><button className="pill" type="button" key={value}
+      aria-pressed={s.stageView===value} disabled={busy||disabled} onClick={()=>void control({stageView:value})}>{label}</button>)}
+    panels={{
     join:<div className="join-banner"><QR url={joinUrl}/><div><h2>Join the workshop</h2><a href={joinUrl}>Participant join link</a><p>Room code <strong>{s.code}</strong></p></div></div>,
     participants:<FacilitatorTelemetry key={s.run} snapshot={snapshot}/>,
-    screen:<section className="control-panel"><h3>On the big screen</h3>
-      <p>The display follows the workshop stages. Use these controls to show a specific view or pause photos.</p>
-      <div className="row"><Button solid={s.stageView===automaticView} disabled={busy||s.closed} onClick={()=>void control({stageView:automaticView})}>Follow workshop</Button>
-        {stageViews.filter(([value])=>value!==automaticView&&(!collection||value!=='results'||s.phase===5)).map(([value,label])=><Button key={value} disabled={busy} solid={s.stageView===value} onClick={()=>void control({stageView:value})}>{label}</Button>)}
-        {revised&&s.firstRevealed&&s.phase>=2&&automaticView!=='first-ideas'&&<Button disabled={busy} solid={s.stageView==='first-ideas'} onClick={()=>void control({stageView:'first-ideas'})}>First ideas</Button>}
-        {collection&&s.phase===5&&!s.closed&&<Button disabled={busy} solid={s.stageView==='final-exchange'} onClick={()=>void control({stageView:'final-exchange'})}>Final neighbour exchange · 2 min</Button>}
-      </div>
-      <div className="row"><Button disabled={busy} onClick={()=>void control({galleryPaused:!s.galleryPaused})}>{s.galleryPaused?'Resume gallery':'Pause gallery'}</Button></div>
-    </section>,
     results:<div className="desk-tool-stack">
       {revised?<div className="reflection-results"><section><h2>{CHANGE_QUESTION}</h2>{CHANGE_CHOICES.map(choice=><div className="result-row" key={choice}>
         <span>{choice}</span><meter min={0} max={Math.max(snapshot.total,1)} value={snapshot.biggestChange?.[choice]||0}/><b>{snapshot.biggestChange?.[choice]||0}</b>
