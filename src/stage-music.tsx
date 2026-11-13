@@ -9,8 +9,7 @@ export function StageMusic({session,connected}:{session:Session;connected:boolea
   const [volume,setVolume]=useState(.25);
   const [error,setError]=useState('');
   const seconds=useRoundSeconds(session);
-  const building=session.phase===1||session.phase===3;
-  const playing=connected&&building&&session.remainingMs===null&&(seconds??0)>0;
+  const playing=connected&&session.endsAt!==null&&session.remainingMs===null&&(seconds??0)>0;
   const countdownActive=useRef(playing);
   countdownActive.current=playing;
 
@@ -75,7 +74,7 @@ export function StageMusic({session,connected}:{session:Session;connected:boolea
   }
 
   return <><details className="stage-music">
-    <summary>{enabled?'Build music on':'Build music'}</summary>
+    <summary>{enabled?'Countdown music on':'Countdown music'}</summary>
     <div className="stage-music-controls">
       <label>Track on this Mac<input type="file" accept="audio/*,.mp3,.wav,.m4a" onChange={choose}/></label>
       {track&&<p className="stage-music-track">{track.name}</p>}
@@ -83,7 +82,7 @@ export function StageMusic({session,connected}:{session:Session;connected:boolea
         <button type="button" onClick={enable} disabled={!track}>{enabled?'Mute music':'Enable music'}</button>
         <label>Volume<input type="range" min="0" max="1" step=".05" value={volume} onChange={e=>setVolume(Number(e.target.value))}/></label>
       </div>
-      <p role="status">{error||(enabled?(playing?'Playing':'Ready for the next build countdown'):'Plays during Build and Make it yours.')}</p>
+      <p role="status">{error||(enabled?(playing?'Playing':'Ready for the next countdown'):'Plays whenever a countdown is running.')}</p>
     </div>
   </details><audio ref={audio} src={track?.url} loop preload="metadata"/></>;
 }
