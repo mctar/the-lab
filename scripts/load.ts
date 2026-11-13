@@ -66,16 +66,14 @@ try{
     streams.push((async()=>{try{while(!(await reader.read()).done){}}catch(error){if(!abort.signal.aborted)throw error;}})());
   }));
   await control({phase:0});
-  await Promise.all(clients.map(async client=>{
-    await submit(client,'first-idea',{title:'A bridge'});
-    await save(client,{handoff:'ready',progress:3});
-  }));
+  await Promise.all(clients.map(client=>save(client,{handoff:'ready',progress:3})));
   const activity={step:3,visibility:'visible',pendingSaves:0,syncStatus:'saved',waitingForPhase:1,photos:{pile:true,build:false,concept:false},handedOff:true,cardReady:false};
   await Promise.all(clients.map(client=>call(root+'/telemetry',client.token,activity)));
   const waiting=await call<Snapshot>(root+'/snapshot',room.hostToken);
   await control({phase:1});
   await control({phase:2});
   await Promise.all(clients.map(client=>submit(client,'build',{title:'First build'})));
+  await Promise.all(clients.map(client=>submit(client,'first-idea',{title:'A bridge'})));
   await control({stageView:'first-ideas'});
   const first=await call<Snapshot>(root+'/snapshot',room.stageToken);
   await control({stageView:'overview',timer:'reset'});
@@ -84,6 +82,7 @@ try{
   await control({phase:3});
   await Promise.all(clients.map(client=>save(client,{progress:6})));
   await control({phase:4});
+  await Promise.all(clients.map(client=>save(client,{progress:7})));
   await Promise.all(clients.map(client=>submit(client,'concept',{title:'Neighbour relay',description:'A game for two people.',mine:'I added turns.'})));
   await control({phase:5});
   await Promise.all(clients.map(client=>save(client,{progress:9,biggestChange:'What people would do'})));
@@ -94,6 +93,7 @@ try{
   const report={at:new Date().toISOString(),api,users:count,liveConnections,requests:latencies.length,
     ready:waiting.collection?.instructions,waiting:waiting.telemetry?.waiting,finished:finished.telemetry?.finished,
     photoSuccess,photoRetries,largePhotoCount,firstPairs:first.ideas?.firstBuilds?.length,finalPairs:stage.ideas?.comparisons?.length,
+    conceptReached:finished.collection?.conceptReached,buildsWithConcepts:finished.collection?.buildsWithConcepts,
     closingVotes:stage.biggestChange?.['What people would do'],
     p50Ms:Math.round(latencies[Math.floor(latencies.length*.5)]),p95Ms:Math.round(latencies[Math.floor(latencies.length*.95)])};
   const reportDirectory=process.env.REPORT_DIRECTORY||'.runtime';
@@ -101,7 +101,7 @@ try{
   await writeFile(reportDirectory+'/load-report.json',JSON.stringify(report,null,2));
   console.log(JSON.stringify(report,null,2));
   const shared=Math.ceil(count/2);
-  if([report.ready,report.waiting,report.finished,report.closingVotes,liveConnections].some(n=>n!==count)||
+  if([report.ready,report.waiting,report.finished,report.closingVotes,report.conceptReached,report.buildsWithConcepts,liveConnections].some(n=>n!==count)||
      report.firstPairs!==shared||report.finalPairs!==shared||photoSuccess!==count*3)process.exitCode=1;
 }finally{
   abort.abort();

@@ -9,7 +9,7 @@ import sharp from 'sharp';
 import { z, ZodError } from 'zod';
 import type { ServerResponse, OutgoingHttpHeaders } from 'node:http';
 import { database, type Database, type Query, type Row } from './db.js';
-import { mutation, cardInput, activityInput, resetInput, answerPatch, CARD_PHASE, CURRENT_FLOW_VERSION, FIRST_IDEA_LIMIT, TWISTS, revisedFlow, requiredFlow, roundMinutes, isWriteupKind, type Session, type Participant, type Snapshot, type Card } from './model.js';
+import { mutation, cardInput, activityInput, resetInput, answerPatch, CARD_PHASE, CURRENT_FLOW_VERSION, FIRST_IDEA_LIMIT, TWISTS, buildFirstFlow, revisedFlow, requiredFlow, roundMinutes, isWriteupKind, type Session, type Participant, type Snapshot, type Card, type CollectionCounts } from './model.js';
 import { hostTelemetry } from './activity.js';
 import { purgeExpiredData } from './retention.js';
 
@@ -96,7 +96,7 @@ export async function createApp(opts: Options) {
   app.post('/v1/sessions',async(req,reply)=>{
     const token=req.headers.authorization?.replace(/^Bearer /,'') || '';
     if(!opts.adminToken || !timingSafeEqual(Buffer.from(hash(token)),Buffer.from(hash(opts.adminToken)))) fail(401,'Not authorized.');
-    const b=z.object({title:z.string().trim().min(1).max(120),code:z.string().regex(/^[A-Z2-9]{6,12}$/).optional(),flowVersion:z.union([z.literal(1),z.literal(2),z.literal(CURRENT_FLOW_VERSION)]).default(CURRENT_FLOW_VERSION),reusable:z.boolean().default(false)}).parse(req.body);
+    const b=z.object({title:z.string().trim().min(1).max(120),code:z.string().regex(/^[A-Z2-9]{6,12}$/).optional(),flowVersion:z.literal([1,2,3,CURRENT_FLOW_VERSION]).default(CURRENT_FLOW_VERSION),reusable:z.boolean().default(false)}).parse(req.body);
     const id=randomUUID(), code=b.code || randomBytes(5).toString('hex').toUpperCase().replace(/[01]/g,'A');
     const hostToken=randomBytes(32).toString('base64url'),stageToken=randomBytes(32).toString('base64url');
     await db.transaction(async q=>{
@@ -147,10 +147,13 @@ export async function createApp(opts: Options) {
         if(required&&(b.patch.share===true||b.patch.writeup===true))fail(403,'Sharing choices are recorded at join.');
         if(b.patch.writeup===true && s.flow_version!==2) fail(403,'Public write-up sharing is unavailable.');
         for(const [k,v] of Object.entries(b.patch)) {const phase=k==='before'||k==='handoff'?0:k==='after'||k==='biggestChange'?5:['works','feel','instructionEase','ideaLiking'].includes(k)?2:k==='twist'?1:k==='progress'?CARD_PHASE[v as number]:-1;if(phase>s.phase) fail(403,'Your facilitator has not opened this phase yet.');}
-        const data={...p.data,...b.patch};
-        if(required&&(b.patch.handoff&&b.patch.handoff!=='no-plan'||(b.patch.progress??0)>=4)){
+        const buildFirst=buildFirstFlow({flowVersion:s.flow_version});
+        const progress=b.patch.progress??0;
+        const data={...p.data,...b.patch,...(buildFirst&&progress>=7?{conceptCardReached:true}:{})};
+        const needsEvidence=buildFirst?progress>=6:progress>=4||b.patch.handoff!==undefined&&b.patch.handoff!=='no-plan';
+        if(required&&needsEvidence){
           const cards=await q('SELECT kind FROM submissions WHERE participant_id=$1',[p.id]);
-          const kinds=new Set(cards.map(row=>row.kind)),progress=b.patch.progress??0;
+          const kinds=new Set(cards.map(row=>row.kind));
           if(!data.handoff||data.handoff!=='no-plan'&&!kinds.has('first-idea'))fail(400,'Save your first AI idea and image before continuing.');
           if(progress>=6&&(!kinds.has('build')||!data.instructionEase||!data.ideaLiking))fail(400,'Save your build photo and answer both reflection questions.');
           if(progress>=8&&!kinds.has('concept'))fail(400,'Save your complete concept card before continuing.');
@@ -302,7 +305,13 @@ export async function createApp(opts: Options) {
         assetId:row.asset_id,label:row.kind==='first-idea'?'Original AI idea':row.kind.endsWith('build')?'First build photo':'Concept image',
         consentedAt:new Date(required?row.joined_at:row.updated_at).toISOString()
       })):undefined;
-      const collection=host&&required?{instructions,noPlan,firstIdeas:collected.filter(row=>row.kind==='first-idea').length,builds:collected.filter(row=>row.kind==='build').length,concepts:allConcepts.length}:undefined;
+      const builds=collected.filter(row=>row.kind==='build');
+      const collection:CollectionCounts|undefined=host&&required?{instructions,noPlan,firstIdeas:collected.filter(row=>row.kind==='first-idea').length,builds:builds.length,concepts:allConcepts.length}:undefined;
+      if(collection&&buildFirstFlow({flowVersion:s.flow_version})){
+        const conceptOwners=new Set(allConcepts.map(row=>row.participant_id));
+        collection.conceptReached=people.filter(row=>row.data.conceptCardReached===true||conceptOwners.has(row.id)).length;
+        collection.buildsWithConcepts=builds.filter(row=>conceptOwners.has(row.participant_id)).length;
+      }
       return {session:sessionView(s),total:people.length,before,after,paired,transitions,works,feel,instructionEase,ideaLiking,biggestChange,progress,gallery,ideas,publication,collection,capturedAt:new Date().toISOString(),...(telemetry?{telemetry}:{})};
     });
   }

@@ -50,7 +50,7 @@ test('confirmed reset isolates the previous run, rejects stale writes, preserves
     assert.equal((await app.inject({method:'GET',url:root+'/assets/'+assetId,headers:{authorization:'Bearer '+s.stageToken}})).statusCode,404);
     assert.equal((await call('GET',root+'/export',s.hostToken)).data.answers.length,0);
     const rejoined=(await call('POST','/v1/join','',{code:s.code,joinKey,aiTool:'Claude',share:false,writeup:false})).data;
-    assert.notEqual(rejoined.token,p.token);assert.notEqual(rejoined.participant.id,p.participant.id);assert.equal(rejoined.participant.data.progress,0);assert.equal(rejoined.participant.data.share,false);assert.equal(rejoined.participant.data.aiTool,'Claude');assert.equal(rejoined.session.flowVersion,3);assert.equal(rejoined.participant.data.before,undefined);
+    assert.notEqual(rejoined.token,p.token);assert.notEqual(rejoined.participant.id,p.participant.id);assert.equal(rejoined.participant.data.progress,0);assert.equal(rejoined.participant.data.share,false);assert.equal(rejoined.participant.data.aiTool,'Claude');assert.equal(rejoined.session.flowVersion,4);assert.equal(rejoined.participant.data.before,undefined);
     assert.deepEqual((await call('POST',root+'/reset',s.hostToken,reset)).data,result.data,'retry returns the original acknowledgement');assert.equal((await call('GET',root+'/snapshot',s.hostToken)).data.total,1,'retry must not reset a second time');
     assert.equal((await call('GET','/v1/sessions/'+other.id+'/snapshot',other.hostToken)).data.total,1);
     assert.equal((await db.query('SELECT data FROM participants WHERE id=$1 AND run=0',[p.participant.id]))[0].data.aiTool,'Gemini');await stat(join(dir,'photos',assetId+'.jpg'));

@@ -19,7 +19,7 @@ export async function live(id:string,token:string,signal:AbortSignal,onChange:()
     await new Promise<void>(resolve=>{const t=setTimeout(resolve,2500+Math.random()*2000);signal.addEventListener('abort',()=>{clearTimeout(t);resolve();},{once:true});});
   }
 }
-export type Draft={step:number; aiConcept:string; firstIdea:string; firstIdeaSent:string; decided:string; name:string; what:string; mine:string; pilePhoto:string; originalPhoto:string; buildPhoto:string; conceptPhoto:string; handedOff:boolean; recordingPlan:boolean; buildCaptured:boolean; reflectionDone:boolean; buildSent:boolean; sent:boolean; buildWriteupSent:boolean; conceptWriteupSent:boolean; answers:Answers;waitingForPhase:number|null};
+export type Draft={step:number; aiConcept:string; firstIdea:string; firstIdeaSent:string; decided:string; name:string; what:string; mine:string; pilePhoto:string; originalPhoto:string; buildPhoto:string; conceptPhoto:string; handedOff:boolean; recordingPlan:boolean; buildCaptured:boolean; firstIdeaCaptured?:boolean; reflectionDone:boolean; buildSent:boolean; sent:boolean; buildWriteupSent:boolean; conceptWriteupSent:boolean; answers:Answers;waitingForPhase:number|null};
 const blank=():Draft=>({step:0,aiConcept:'',firstIdea:'',firstIdeaSent:'',decided:'',name:'',what:'',mine:'',pilePhoto:'',originalPhoto:'',buildPhoto:'',conceptPhoto:'',handedOff:false,recordingPlan:false,buildCaptured:false,reflectionDone:false,buildSent:false,sent:false,buildWriteupSent:false,conceptWriteupSent:false,answers:{},waitingForPhase:null});
 type DraftStore={get:<T>(key:string)=>Promise<T|undefined>;set:(key:string,value:unknown)=>Promise<void>;del:(key:string)=>Promise<void>};
 type Job={id:string; kind:'patch'|'publish'; patch?:Answers; card?:{kind:CardKind; title:string; description:string; mine:string; photo:string}; body?:any; assetId?:string; consentVersion?:number};
@@ -31,8 +31,10 @@ export class Workshop {
   async init(){const saved=await this.store.get<{draft:Draft;jobs:Job[]}>(this.key);if(saved){this.draft={...blank(),...saved.draft};this.jobs=saved.jobs;}else{this.draft.answers=this.identity.participant.data;this.draft.step=this.identity.participant.data.progress||0;}try{await this.refresh();}catch{/* Keep the local draft available while offline. */}this.onChange();}
   async persist(){if(this.reset)return;const snapshot=structuredClone({draft:this.draft,jobs:this.jobs});const save=()=>this.store.set(this.key,snapshot);this.persisting=this.persisting.then(save,save).catch(()=>{this.message='Phone storage is full. Keep this page open and free some space.';this.onChange();throw new Error(this.message);});await this.persisting;}
   edit(patch:Partial<Draft>){if(this.reset)return;Object.assign(this.draft,patch);this.onChange();void this.persist().catch(()=>{});}
-  async patch(patch:Answers){
-    if(this.reset)return;Object.assign(this.draft.answers,patch);
+  async patch(patch:Answers,draftPatch?:Omit<Partial<Draft>,'answers'>){
+    if(this.reset)return;
+    Object.assign(this.draft,draftPatch);
+    Object.assign(this.draft.answers,patch);
     if(patch.share===false&&!requiredFlow(this.identity.session)){
       this.jobs=this.jobs.filter(j=>!j.card||isWriteupKind(j.card.kind));
       this.draft.sent=false;this.draft.buildSent=false;this.draft.firstIdeaSent='';
@@ -119,7 +121,7 @@ export class Workshop {
     this.draft.sent=false;
     if(requiredFlow(this.identity.session)){
       const step=answers.progress??0;
-      Object.assign(this.draft,{step,waitingForPhase:null,buildCaptured:step>=6,reflectionDone:step>=6,sent:step>=8,handedOff:answers.handoff==='ready'});
+      Object.assign(this.draft,{step,waitingForPhase:null,buildCaptured:step>=6,firstIdeaCaptured:step>=6,reflectionDone:step>=6,sent:step>=8,handedOff:answers.handoff==='ready'});
     }
     this.message='Connected again. Review this step and continue.';
     await this.persist();this.onChange();

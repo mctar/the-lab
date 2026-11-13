@@ -1,5 +1,5 @@
 import React,{useEffect,useRef,useState,type CSSProperties} from 'react';
-import {CHANGE_CHOICES,CHANGE_QUESTION,IDEA_LIKING,INSTRUCTION_EASE,INSTRUCTION_EASE_CHOICES,SCALE,WORKSHOP_NAME,hasTimer,requiredFlow,revisedFlow,type Card,type Snapshot} from '../server/model';
+import {CHANGE_CHOICES,CHANGE_QUESTION,IDEA_LIKING,INSTRUCTION_EASE,INSTRUCTION_EASE_CHOICES,SCALE,WORKSHOP_NAME,buildFirstFlow,hasTimer,requiredFlow,revisedFlow,type Card,type Snapshot} from '../server/model';
 import {groupIdeaTitles,pairedMovement} from './stage-data';
 import {ComparisonWall,PhotoWall} from './stage-walls';
 import {RoundClock} from './round-clock';
@@ -150,6 +150,7 @@ function ClosingChanges({snapshot}:{snapshot:Snapshot}){
 
 export function StageScreen({snapshot,connected,error,qr,joinUrl,photo}:StageProps){
   const s=snapshot.session,cue=stageCue(s),view=s.stageView,lobby=s.phase<0&&!s.closed,required=requiredFlow(s);
+  const buildFirst=buildFirstFlow(s);
   const {enabled:motion,paused:motionPaused,forced:reducedMotion,toggle}=useMotion();
   const [joinOpen,setJoinOpen]=useState(false);
   const previousTotal=useRef(snapshot.total),[joinBurst,setJoinBurst]=useState(false);
@@ -169,8 +170,8 @@ export function StageScreen({snapshot,connected,error,qr,joinUrl,photo}:StagePro
   const title=firstReflection?'Reflect on the first build':view==='first-ideas'?'What did the AI suggest?':view==='comparison'?'What did we change?':cue.title;
   const reminder=firstReflection?'Answer the reflection questions on your phone. Look for ideas that repeat.':
     view==='first-ideas'?'Compare the AI ideas with what people built.':
-    view==='comparison'?(required?'Compare the ideas. Answer the closing question on your phone.':'What changed, and what prompted that decision?'):
-    liveWall?(uploadKind==='concept'?'Name your idea, add an image and say what changed.':uploadKind==='build'?'Photograph what you built. Unfinished builds count.':cue.steps[0]):cue.steps[0];
+    view==='comparison'?(buildFirst?CHANGE_QUESTION+' Tap one answer on your phone.':required?'Compare the ideas. Answer the closing question on your phone.':'What changed, and what prompted that decision?'):
+    liveWall?(uploadKind==='concept'?(buildFirst?'Name it, describe it, add an image or a quick sketch, and say what changed.':'Name your idea, add an image and say what changed.'):uploadKind==='build'?(buildFirst?'Photograph your build. Then save the first AI idea if you got one.':'Photograph what you built. Unfinished builds count.'):cue.steps[0]):cue.steps[0];
   const joinPage=new URL(joinUrl);
   joinPage.hash='';
   const manualJoin=<div className="stage-manual-join">
@@ -182,7 +183,7 @@ export function StageScreen({snapshot,connected,error,qr,joinUrl,photo}:StagePro
     <header className="play-header"><div className="play-brand"><span className="brand-brick"><i/><i/></span><b>{WORKSHOP_NAME}</b>{rehearsal&&<span className="rehearsal-tag">DRY RUN</span>}</div><div className={'play-live'+(!connected||error?' reconnecting':'')} role="status"><i/>{connected&&!error?'LIVE':'RECONNECTING'}</div></header>
     <div className="play-title-row cue-title-row">
       <div><p className="cue-kicker">{s.closed?'Workshop complete':`${cue.step+1} / ${STAGE_STEPS.length} · ${STAGE_STEPS[cue.step]}`}</p><h1>{title}</h1>{!lobby&&(!instructions||liveWall)&&<p className="cue-reminder">{reminder}</p>}</div>
-      {!lobby&&(!instructions||gettingPlan)&&<RoundClock session={s} compact/>}
+      {!lobby&&(!instructions||gettingPlan||liveWall)&&<RoundClock session={s} compact/>}
     </div>
     <main className="play-content">
       {lobby?<div className="stage-join">

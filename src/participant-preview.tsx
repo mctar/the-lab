@@ -1,24 +1,26 @@
 import {useEffect,useRef,useState} from 'react';
-import {hasTimer,requiredFlow,revisedFlow,type Session} from '../server/model';
+import {buildFirstFlow,hasTimer,requiredFlow,revisedFlow,type Session} from '../server/model';
 import type {Draft} from './client';
 import {media} from './media';
 import {Join,ParticipantScreen} from './participant';
 
 function previewOptions(session:Session):{label:string;draft?:Partial<Draft>}[]{
   if(session.closed)return [{label:'Workshop complete',draft:{step:0}}];
+  const buildFirst=buildFirstFlow(session);
   switch(session.phase){
     case -1:return [{label:'Join form'},{label:'Waiting in the lobby',draft:{step:0}}];
     case 0:return [
       {label:'Take a photo',draft:{step:2}},
       {label:'Send photo and prompt',draft:{step:3,pilePhoto:media.pileD}},
-      ...(requiredFlow(session)?[{label:'Save first AI idea',draft:{step:3,pilePhoto:media.pileD,recordingPlan:true}}]:[]),
+      ...(requiredFlow(session)&&!buildFirst?[{label:'Save first AI idea',draft:{step:3,pilePhoto:media.pileD,recordingPlan:true}}]:[]),
       {label:'Waiting to build',draft:{step:3,pilePhoto:media.pileD,handedOff:true,waitingForPhase:1}},
     ];
     case 1:return [{label:'Build',draft:{step:4,handedOff:true}},{label:'Build without instructions',draft:{step:4}}];
     case 2:return [
-      ...(session.exchange&&revisedFlow(session)?[{label:'Neighbour exchange',draft:{step:5,buildCaptured:true,reflectionDone:true}}]:[]),
-      {label:hasTimer(session)?'Reflection':'Capture build',draft:{step:5,buildCaptured:hasTimer(session),handedOff:true}},
-      ...(hasTimer(session)?[{label:'Capture build',draft:{step:5}}]:[{label:'Waiting for reflection',draft:{step:5,buildCaptured:true}}]),
+      ...(session.exchange&&revisedFlow(session)?[{label:'Neighbour exchange',draft:{step:5,buildCaptured:true,firstIdeaCaptured:true,reflectionDone:true}}]:[]),
+      {label:hasTimer(session)?'Reflection':'Capture build',draft:{step:5,buildCaptured:hasTimer(session),firstIdeaCaptured:true,handedOff:true}},
+      ...(buildFirst?[{label:'Save first AI idea',draft:{step:5,buildCaptured:true,handedOff:true,answers:{aiTool:'ChatGPT' as const,handoff:'ready' as const}}}]:[]),
+      ...(hasTimer(session)?[{label:'Capture build',draft:{step:5}}]:[{label:'Waiting for reflection',draft:{step:5,buildCaptured:true,firstIdeaCaptured:true}}]),
     ];
     case 3:return [{label:'Develop the concept',draft:{step:6,decided:'Make it a game for two people'}}];
     case 4:return [{label:'Concept card',draft:{step:7}}];

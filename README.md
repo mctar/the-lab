@@ -80,7 +80,7 @@ Backend releases are controlled separately. Copy reviewed source to Hugin, set a
 
 ## Big-screen scenes
 
-The **Instructions** view shows the current audience cue in large type. The lobby shows the QR and live join count. Every phase change returns to instructions. The facilitator can switch to **Results**, **Gallery**, or **Responses** while the current phase and timer remain visible. Build starts at five minutes, reflection at two minutes after the build-photo cue, and concept development at ten minutes. Phones and the projector read the same server deadline. The facilitator can pause, resume, extend, and advance the room.
+The **Instructions** view shows the current audience cue in large type. The lobby shows the QR and live join count. In new runs, the AI handoff and concept development are six minutes each, build is five minutes, reflection and neighbour exchange are two minutes each, and the final-card slot is four minutes. The build-photo cue opens before the reflection timer. Phones and the projector read the same server deadline. The facilitator can pause, resume, extend, and advance the room.
 
 The photo wall follows the workshop phases. Build photos and concept cards appear in groups, with recent submissions alongside. The reflection and final comparison show up to eight pairs at once, and closing vote totals appear alongside the final wall. The projector prepares the next group of thumbnails. Use the **Big screen** controls below the facilitator’s stage strip to choose a manual view or pause photos. Press **J** to enlarge the QR, **Escape** to dismiss it, or **M** to toggle decorative motion. Rehearsals are marked **DRY RUN**.
 

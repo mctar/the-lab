@@ -7,8 +7,9 @@ import {test} from 'node:test';
 import sharp from 'sharp';
 import {createApp} from '../server/app.js';
 import {database} from '../server/db.js';
+import {CURRENT_FLOW_VERSION} from '../server/model.js';
 
-test('required submissions count for everyone and each join choice controls its own audience',async()=>{
+for(const flowVersion of [3,CURRENT_FLOW_VERSION])test(`flow ${flowVersion} preserves submission requirements, phase gates and independent sharing permissions`,async()=>{
   const directory=await mkdtemp(join(tmpdir(),'lab-required-'));
   const app=await createApp({db:await database(),dataDir:directory,adminToken:'test-admin',origins:[]});
   try{
@@ -17,14 +18,14 @@ test('required submissions count for everyone and each join choice controls its 
       assert.equal(result.statusCode,status,result.body);
       return result.json();
     }
-    const room=await call('POST','/v1/sessions','test-admin',{title:'Required flow rehearsal'},201);
+    const room=await call('POST','/v1/sessions','test-admin',{title:'Required flow rehearsal',...(flowVersion===3?{flowVersion}:{})},201);
     const root='/v1/sessions/'+room.id;
     const admission={code:room.code,aiTool:'Claude'};
     await call('POST','/v1/join','',{...admission,joinKey:randomUUID()},400);
     const joinKey=randomUUID();
     const builder=await call('POST','/v1/join','',{...admission,joinKey,share:true,writeup:false});
     const retried=await call('POST','/v1/join','',{...admission,joinKey,share:false,writeup:true});
-    assert.equal(builder.session.flowVersion,3);
+    assert.equal(builder.session.flowVersion,flowVersion);
     assert.equal(retried.participant.data.share,true);
     assert.equal(retried.participant.data.writeup,false);
     const publicationOnly=await call('POST','/v1/join','',{...admission,joinKey:randomUUID(),share:false,writeup:true});
@@ -58,8 +59,16 @@ test('required submissions count for everyone and each join choice controls its 
 
     await control({phase:0});
     await save(privateBuilder,{share:true},403);
-    await save(builder,{handoff:'ready'},400);
+    await save(builder,{handoff:'ready'},flowVersion===3?400:200);
     await submit(builder,'first-idea',{title:'A bridge'},400);
+    if(flowVersion===4){
+      assert.equal((await host()).collection.firstIdeas,0);
+      await control({phase:1});
+      await save(builder,{progress:4});
+      await save(privateBuilder,{progress:4});
+      await control({phase:2});
+      await save(builder,{progress:5});
+    }
     const original=await upload(builder);
     await submit(builder,'first-idea',{title:'A bridge',assetId:original});
     await save(builder,{handoff:'ready'});
@@ -67,14 +76,17 @@ test('required submissions count for everyone and each join choice controls its 
     await submit(privateBuilder,'first-idea',{title:'A table',assetId:privateOriginal});
     await save(privateBuilder,{handoff:'idea-only'});
     await save(publicationOnly,{handoff:'no-plan'});
-    assert.deepEqual((await host()).collection,{instructions:1,noPlan:2,firstIdeas:2,builds:0,concepts:0});
+    assert.deepEqual((await host()).collection,{instructions:1,noPlan:2,firstIdeas:2,builds:0,concepts:0,
+      ...(flowVersion===4?{conceptReached:0,buildsWithConcepts:0}:{})});
     assert.equal((await stage()).collection,undefined);
     await access(original,room.stageToken,404);
     await access(privateOriginal,room.hostToken,404);
     await access(privateOriginal,builder.token,403);
 
-    await control({phase:1});
-    await control({phase:2});
+    if(flowVersion===3){
+      await control({phase:1});
+      await control({phase:2});
+    }
     const build=await upload(builder);
     await submit(builder,'build',{title:'First build',assetId:build});
     const approved=await upload(publicationOnly);
@@ -100,15 +112,24 @@ test('required submissions count for everyone and each join choice controls its 
     await control({phase:3});
     await save(privateBuilder,{progress:6,instructionEase:'I had no instructions',ideaLiking:'Somewhat'},400);
     await save(builder,{progress:6});
-    await control({phase:4});
+    const cardRound=await control({phase:4});
+    if(flowVersion===4){
+      assert.ok(Date.parse(cardRound.endsAt)-Date.parse(cardRound.serverTime)>235000);
+      await save(builder,{progress:7});
+      await save(builder,{progress:6});
+      assert.equal((await host()).collection.conceptReached,1);
+      assert.equal((await host()).collection.buildsWithConcepts,0);
+    }else assert.equal(cardRound.endsAt,null);
     const final=await upload(builder);
     await submit(builder,'concept',{title:'Neighbour relay',description:'A game for two.',assetId:final},400);
     await submit(builder,'concept',{title:'Neighbour relay',description:'A game for two.',mine:'I added turns.',assetId:final});
+    if(flowVersion===4)assert.equal((await host()).collection.buildsWithConcepts,1);
     assert.deepEqual((await stage()).gallery.map((card:{assetId:string})=>card.assetId),[final]);
     await access(final,room.stageToken,200);
     await access(original,room.stageToken,404);
     const last=await control({phase:5});
     assert.equal(last.stageView,'comparison');
+    assert.equal(last.endsAt,null);
     assert.equal((await stage()).ideas.comparisons[0].final.mine,'I added turns.');
     await access(final,room.stageToken,200);
     await save(builder,{progress:9},400);

@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import QRCode from 'qrcode';
-import {CHANGE_CHOICES,CHANGE_QUESTION,SCALE,hasTimer,revisedFlow,type Snapshot,type Card,type PublicationPhoto} from '../server/model';
+import {CHANGE_CHOICES,CHANGE_QUESTION,SCALE,buildFirstFlow,hasTimer,revisedFlow,type Snapshot,type Card,type PublicationPhoto} from '../server/model';
 import {API,request} from './client';
 import {media} from './media';
 import {FacilitatorTelemetry} from './telemetry';
@@ -103,6 +103,7 @@ function Staff({id,role,token,base,onAuthorized}:{id:string;role:StaffRole;token
   if(!host)return <StageScreen key={s.run} snapshot={snapshot} connected={connected} error={error} joinUrl={joinUrl} qr={<QR url={joinUrl}/>} photo={(card,full)=><ProtectedPhoto key={card.assetId} id={id} token={token} asset={card.assetId!} alt={card.title||'A build from the room'} full={full}/>}/>;
 
   const capturing=s.phase===2&&!hasTimer(s);
+  const buildFirst=buildFirstFlow(s);
   const revised=revisedFlow(s),firstIdeas=snapshot.ideas?.first||[],collection=snapshot.collection;
   const people=snapshot.telemetry?.participants||[];
   const ready=collection?.instructions??people.filter(person=>person.handedOff&&person.waitingForPhase===1).length;
@@ -116,7 +117,7 @@ function Staff({id,role,token,base,onAuthorized}:{id:string;role:StaffRole;token
       : {label:'Start reflection · 2 min',patch:{timer:'reset',stageView:'overview'}}
     : revised&&s.phase===2&&!s.exchange
       ? {label:'Start neighbour exchange · 2 min',patch:{exchange:true}}
-      : s.phase<5 ? {label:phaseActions[s.phase+1],patch:{phase:s.phase+1}} : null;
+    : s.phase<5 ? {label:buildFirst&&s.phase===4?'Reveal cards & open vote':phaseActions[s.phase+1],patch:{phase:s.phase+1}} : null;
   async function hideCard(card:Card){
     try{await request(`/v1/sessions/${id}/cards/${card.id}`,token,{hidden:!card.hidden},'PATCH');await refresh();}
     catch(e){setError((e as Error).message);}
@@ -126,9 +127,12 @@ function Staff({id,role,token,base,onAuthorized}:{id:string;role:StaffRole;token
   if(revised&&capturing)progress=collection
     ? `${collection.builds} of ${snapshot.total} build photos saved · ${collection.firstIdeas} original ideas saved`
     : `${firstIdeas.filter(card=>!card.hidden).length} first ideas ready to reveal`;
-  if(collection&&s.phase===4)progress=`${collection.concepts} of ${snapshot.total} concept cards saved`;
+  if(collection&&s.phase===4)progress=collection.conceptReached===undefined
+    ? `${collection.concepts} of ${snapshot.total} concept cards saved`
+    : `${collection.concepts} saved · ${collection.conceptReached} reached the card`;
   if(collection&&s.phase===5)progress=`${closingVotes} of ${snapshot.total} closing votes saved`;
-  const facilitatorNote=collection&&s.phase===0?'While people wait, explain that AI plans can miscount pieces. Ask everyone to build what they can.':undefined;
+  const facilitatorNote=collection&&s.phase===0?'When the clock ends, ask everyone to start with the pieces they have.':
+    collection?.buildsWithConcepts!==undefined&&s.phase>=4?`${collection.buildsWithConcepts} of ${collection.builds} people who saved a first build also saved a final card.`:undefined;
   const automaticView=revised&&s.phase===5?'comparison':collection&&s.phase===2&&!capturing&&!s.exchange?'first-ideas':'overview';
   const resetCardCount=collection?collection.firstIdeas+collection.builds+collection.concepts:cards.length+firstIdeas.length+(snapshot.publication?.length||0);
   const projectorViews:{value:string;label:string;disabled:boolean}[]=[

@@ -15,17 +15,19 @@ Set out one matching brick kit per person, with spare pieces available. Confirm 
 | Time | Activity | Facilitator action |
 |---:|---|---|
 | 4 min | Join and choose an AI app | Participants make both sharing choices here. Watch the join count, then select **Open build plan**. |
-| 6 min | Photograph the bricks and get instructions | Say that AI plans can miscount pieces or give inconsistent diagrams. Ask people to build what they can. Watch **have instructions** and **checked in without instructions**, then add time if the room needs it. Participants save the AI’s first idea and an image as soon as they return. They can use **Send manually** if sharing fails, and report an idea without instructions or no idea from the handoff screen. |
-| 5 min | Try the AI’s plan | Select **Start build**. Give everyone time to work with the bricks they have. |
-| 3 min | Capture the first builds | Select **Capture builds**. Everyone saves a photo of what they built. The projector fills the photo wall as submissions arrive. |
-| 4 min | Reveal, reflect and talk with a neighbour | Select **Start reflection**. The two-minute clock and the paired wall appear together. The phone asks for two ratings and one line about what to change. Select **Start neighbour exchange** and give each person one minute to show their build and describe a change. |
-| 6 min | Develop the idea | Select **Start make it yours**. Ask people to take one change back to their AI chat. The bricks were a prototype. The idea can become a game, a ritual, a service, or an experience. |
-| 4 min | Make a concept card | Select **Open concept cards**. Everyone saves a name, one-sentence description, image, and a note on what changed. The projector shows incoming cards. Watch the saved card count. |
-| 8 min | Compare the cards and debrief | Select **Open final reflection** to show groups of original and final cards. The vote totals appear as people answer. If time allows, select **Final neighbour exchange** in the **Big screen** controls below the stage strip. Select **Follow workshop** to return to the comparison. |
+| 6 min | Photograph the bricks and get instructions | Watch **have instructions** and **checked in without instructions**. Participants can use **Send manually** if sharing fails. At zero, tell everyone to start with what came back or with the pieces they have. |
+| 5 min | Build | Select **Start build**. Phones in the AI handoff move to the build cue when participants return. |
+| 3 min | Capture the first builds | Select **Capture builds**. Everyone saves a build photo, then reports what came back from the AI. If they got an idea, they save its name and an image or screenshot. The photo wall fills as builds arrive. |
+| 4 min | Reveal, reflect and talk with a neighbour | Select **Start reflection** to show the first build pairs and start two minutes for the questions. Select **Start neighbour exchange** and give each person one minute to show their build and finish “I want to change…”. They can revise that line on their phone. |
+| 6 min | Develop the idea | Select **Start make it yours**. Participants can copy a prompt containing their change and paste it into the same AI chat. |
+| 4 min | Save the final card | Select **Open concept cards** to start the countdown. Everyone saves a name, a one-sentence description, an image or photo of a quick sketch, and a note on what changed. Watch how many reached the card and how many saved it. Add a minute if needed. |
+| 8 min | Compare the cards and debrief | Select **Reveal cards & open vote**. The big screen shows the question beside the pairs, and one tap on the phone records the answer and finishes. Pick a pair and ask what prompted the change. If time allows, run **Final neighbour exchange** and use **Follow workshop** to return to the comparison. |
 
 Use the stage strip to jump directly to a phase and the **Next** button to step through the normal sequence. Use **Pause timer**, **Resume timer**, **Restart timer**, or **+1 minute** to adjust the pace. If someone is stuck, ask for the **Builder reference** in their Session settings and open **Participant details** to find them.
 
 The **Participant view** follows the current phase using sample data. Use its screen picker to see alternate screens in that phase, such as waiting or saving the first AI idea.
+
+Compare the share of people who saved a first build and went on to save a final card. The November 12 baseline was 55 of 102 (54%). The final-card reach count helps distinguish people who never opened the form from people who opened it and had yet to submit.
 
 ## Debrief
 
