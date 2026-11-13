@@ -16,6 +16,11 @@ CREATE TABLE IF NOT EXISTS credentials (
  participant_id uuid REFERENCES participants ON DELETE CASCADE, role text NOT NULL,
  expires_at timestamptz NOT NULL
 );
+CREATE TABLE IF NOT EXISTS staff_pairings (
+ code_hash text PRIMARY KEY, session_id uuid NOT NULL REFERENCES sessions ON DELETE CASCADE,
+ role text NOT NULL CHECK (role IN ('host','stage')), expires_at timestamptz NOT NULL,
+ redeemed_by uuid
+);
 CREATE TABLE IF NOT EXISTS operations (
  owner text NOT NULL, operation_id uuid NOT NULL, digest text NOT NULL,
  result jsonb NOT NULL, PRIMARY KEY(owner, operation_id)

@@ -14,7 +14,7 @@ const activityGroups=[
   {label:'Final reflection',steps:[8]}, {label:'Finished',steps:[9]},
 ];
 const tools=[
-  ['join','Join QR'], ['participants','Participants'],
+  ['pair','Connect a Mac'], ['join','Join QR'], ['participants','Participants'],
   ['results','Results'], ['media','Images'], ['session','Session'],
 ] as const;
 type Tool=typeof tools[number][0];
@@ -64,8 +64,10 @@ export function FacilitatorDesk({snapshot,connected,error,busy,next,progress,fac
     </nav>
     <section className="desk-projector" aria-labelledby="desk-projector-label">
       <h2 id="desk-projector-label" className="desk-label">Big screen</h2>
+      <span className={`desk-projector-status${snapshot.projectorsOnline?' online':''}`}>{snapshot.projectorsOnline?`${snapshot.projectorsOnline} connected`:'Not connected'}</span>
       <div className="desk-projector-views">{projectorViews}</div>
       <Button disabled={busy} onClick={()=>void control({galleryPaused:!session.galleryPaused})}>{session.galleryPaused?'Resume gallery':'Pause gallery'}</Button>
+      <Button onClick={()=>openTools('pair')}>Connect a Mac</Button>
     </section>
     <main className="desk-main">
       <section className="desk-panel desk-current" aria-labelledby="desk-now">

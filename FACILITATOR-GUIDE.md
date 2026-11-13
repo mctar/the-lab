@@ -2,7 +2,11 @@
 
 ## Before people arrive
 
-On your laptop, open the private facilitator link once, then bookmark the [facilitator page](https://brick.btrbot.com/facilitator/). On a new projection browser, open the private projector link from the access card once. Return to the projector at [brick.btrbot.com/bigscreen](https://brick.btrbot.com/bigscreen) and select **Full screen**.
+1. On your laptop, open [Facilitator](https://brick.btrbot.com/facilitator/). Use the private facilitator link from the access card to sign in the first time.
+2. Click **Connect a Mac → Show the big screen → Create pairing code**. On the projector Mac, open [Pair big screen](https://brick.btrbot.com/bigscreen/#/pair), enter the code, and select **Full screen**.
+3. Confirm the dashboard says **1 connected** under **Big screen**. The projector Mac can return to the same room at [brick.btrbot.com/bigscreen](https://brick.btrbot.com/bigscreen).
+
+To give a second Mac control, choose **Facilitate** in **Connect a Mac** and enter the new code at [Pair facilitator](https://brick.btrbot.com/facilitator/#/pair). Codes expire after 10 minutes and connect one browser. Keep the private facilitator link for recovery.
 
 Before each run in the reusable room, use **Room tools → Session → Reset all…** if there’s a previous run. Leave the projector in the lobby. Participants join by scanning the QR or entering the room code at [The Lab](https://brick.btrbot.com/).
 

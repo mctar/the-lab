@@ -30,6 +30,8 @@
 .desk-projector,.desk-projector-views { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
 .desk-projector { gap:8px 12px; }
 .desk-projector > h2 { white-space:nowrap; }
+.desk-projector-status { color:#b9c6d8; font-size:12px; white-space:nowrap; }
+.desk-projector-status.online { color:#b4ee6b; }
 .desk-projector-views { flex:1 1 auto; }
 .desk-projector .pill { min-height:32px; font-size:13px; padding:4px 9px; white-space:nowrap; }
 .desk-projector .pill[aria-pressed=true] { color:#bce2ff; background:#273748; border-color:#83c9ff; }

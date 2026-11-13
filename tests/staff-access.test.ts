@@ -51,6 +51,42 @@ test('a reusable room retains its role-limited staff links through a confirmed r
     assert.equal(stage.session.code,room.code);
     assert.equal(stage.telemetry,undefined);
     assert.equal((await call('GET',root+'/snapshot',room.hostToken)).total,0);
+
+    const pair=(code:string,role:'host'|'stage',claim=randomUUID(),status=200)=>
+      call('POST','/v1/staff/pair','',{code,role,claim},status);
+    const issue=(role:'host'|'stage',token=room.hostToken,status=201)=>
+      call('POST',root+'/pairing',token,{role},status);
+    await issue('stage',room.stageToken,401);
+    const projector=await issue('stage');
+    assert.match(projector.code,/^[0-9A-Z]{5}-[0-9A-Z]{5}$/);
+    assert.ok(Date.parse(projector.expiresAt)>Date.now());
+    await pair(projector.code,'host',randomUUID(),404);
+    const claim=randomUUID();
+    const paired=await pair(projector.code.toLowerCase().replace('-',' '),'stage',claim);
+    assert.equal(paired.id,room.id);
+    assert.equal(paired.reusable,true);
+    assert.equal((await pair(projector.code,'stage',claim)).token,paired.token);
+    await pair(projector.code,'stage',randomUUID(),404);
+    await call('GET','/v1/sessions/'+regular.id+'/snapshot',paired.token,undefined,401);
+    await call('PATCH',root+'/control',paired.token,{expectedRevision:result.session.revision,phase:0},401);
+    await call('GET',root+'/export',paired.token,undefined,401);
+    await issue('host',paired.token,401);
+    assert.equal((await call('GET',root+'/snapshot',paired.token)).projectorsOnline,undefined);
+    assert.equal((await call('GET',root+'/snapshot',room.hostToken)).projectorsOnline,0);
+
+    const hostCode=await issue('host');
+    const claims=await Promise.all([randomUUID(),randomUUID()].map(claim=>
+      app.inject({method:'POST',url:'/v1/staff/pair',payload:{code:hostCode.code,role:'host',claim}})));
+    assert.deepEqual(claims.map(response=>response.statusCode).sort(),[200,404]);
+    const coHost=claims.find(response=>response.statusCode===200)!.json();
+    const newPhase=await call('PATCH',root+'/control',coHost.token,{expectedRevision:result.session.revision,phase:0});
+    assert.equal((await call('GET',root+'/snapshot',paired.token)).session.phase,0);
+    const nextRun=await call('POST',root+'/reset',coHost.token,{expectedRevision:newPhase.revision,operationId:randomUUID(),confirmation:room.code});
+    assert.equal((await call('GET',root+'/snapshot',paired.token)).session.run,nextRun.session.run);
+
+    const expired=await issue('stage');
+    await db.query("UPDATE staff_pairings SET expires_at=now()-interval '1 second'");
+    await pair(expired.code,'stage',randomUUID(),404);
   }finally{
     await app.close();
     await rm(dir,{recursive:true,force:true});

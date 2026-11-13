@@ -2,7 +2,7 @@ import {useEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import QRCode from 'qrcode';
 import {CHANGE_CHOICES,CHANGE_QUESTION,SCALE,buildFirstFlow,hasTimer,revisedFlow,type Snapshot,type Card,type PublicationPhoto} from '../server/model';
-import {API,request} from './client';
+import {API,ApiError,request} from './client';
 import {media} from './media';
 import {FacilitatorTelemetry} from './telemetry';
 import {StageScreen} from './stage';
@@ -12,6 +12,7 @@ import {Button,Shell,useLive} from './ui';
 import {FacilitatorDesk} from './facilitator';
 import {IDEA_LIKING_QUESTION,REFLECTION_PROMPTS} from './workshop-flow';
 import {staffRoute,staffUrl,type StaffRole} from './staff-routes';
+import {PairingPanel,StaffSignIn} from './staff-pairing';
 import './prototype.css';
 import './style.css';
 
@@ -57,15 +58,18 @@ function PairedResults({snapshot}:{snapshot:Snapshot}){
 const stageViews=[['overview','Instructions'],['results','Closing vote'],['gallery','Photo wall'],['reflections','Reflection responses']] as const;
 const phaseActions=['Open build plan','Start build','Capture builds','Start make it yours','Open concept cards','Open final reflection'];
 
-function Staff({id,role,token,base,onAuthorized}:{id:string;role:StaffRole;token:string;base:string;onAuthorized:(reusable:boolean)=>void}){
+function Staff({id,role,token,base,onAuthorized,onUnauthorized}:{id:string;role:StaffRole;token:string;base:string;onAuthorized:(reusable:boolean)=>void;onUnauthorized:(message:string)=>void}){
   const [snapshot,setSnapshot]=useState<Snapshot|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false);
   const host=role==='host';
   const refresh=()=>request<Snapshot>(`/v1/sessions/${id}/snapshot`,token).then(next=>{
-    if(host!==Boolean(next.telemetry))throw new Error('Open the private link for this staff view.');
+    if(host!==Boolean(next.telemetry))throw new ApiError(401,'Use a pairing code or private link for this view.');
     onAuthorized(next.session.reusable===true);
     setSnapshot(previous=>previous&&(previous.session.run>next.session.run||previous.session.run===next.session.run&&previous.capturedAt>next.capturedAt)?previous:next);
     setError('');
-  }).catch(e=>setError(e.message));
+  }).catch(e=>{
+    if(e instanceof ApiError&&e.status===401)onUnauthorized(e.message);
+    else setError(e.message);
+  });
   const connected=useLive(id,token,()=>void refresh());
   useEffect(()=>{void refresh();},[id,token]);
 
@@ -147,6 +151,7 @@ function Staff({id,role,token,base,onAuthorized}:{id:string;role:StaffRole;token
     projectorViews={projectorViews.map(({value,label,disabled})=><button className="pill" type="button" key={value}
       aria-pressed={s.stageView===value} disabled={busy||disabled} onClick={()=>void control({stageView:value})}>{label}</button>)}
     panels={{
+    pair:<PairingPanel base={base} id={id} token={token} projectorsOnline={snapshot.projectorsOnline??0}/>,
     join:<div className="join-banner"><QR url={joinUrl}/><div><h2>Join the workshop</h2><a href={joinUrl}>Participant join link</a><p>Room code <strong>{s.code}</strong></p></div></div>,
     participants:<FacilitatorTelemetry key={s.run} snapshot={snapshot}/>,
     results:<div className="desk-tool-stack">
@@ -178,9 +183,9 @@ function Staff({id,role,token,base,onAuthorized}:{id:string;role:StaffRole;token
   }}/>;
 }
 function App(){
-  const [href,setHref]=useState(location.href);
+  const [{href,error:signInError},setRoute]=useState({href:location.href,error:''});
   useEffect(()=>{
-    const change=()=>setHref(location.href);
+    const change=()=>setRoute({href:location.href,error:''});
     window.addEventListener('hashchange',change);
     window.addEventListener('popstate',change);
     return()=>{
@@ -192,22 +197,38 @@ function App(){
   if(staff){
     const {role,access,base}=staff;
     const reusableKey=`bwt:reusable:${role}`,lastKey=`bwt:last:${role}`;
-    const id=staff.id||localStorage.getItem(reusableKey)||localStorage.getItem(lastKey)||'';
+    const id=staff.id==='pair'?'':staff.id||localStorage.getItem(reusableKey)||localStorage.getItem(lastKey)||'';
     const roomKey=`bwt:${role}:${id}`,token=access||localStorage.getItem(roomKey);
     if(!token||!/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(id)){
-      const name=role==='host'?'facilitator':'big screen';
-      return <Shell><h1>{role==='host'?'Facilitator':'Big screen'}</h1>
-        <p>Open the private {name} link for your room once on this browser. Then use this address to return.</p>
-      </Shell>;
+      return <StaffSignIn key={href} role={role} error={signInError} onPaired={room=>{
+        if(location.href!==href)return;
+        localStorage.setItem(`bwt:${role}:${room.id}`,room.token);
+        if(room.reusable)localStorage.setItem(reusableKey,room.id);
+        localStorage.setItem(lastKey,room.id);
+        const next=staffUrl(base,role,room.reusable&&role==='stage'?undefined:room.id);
+        history.replaceState(history.state,'',next);
+        setRoute({href:next,error:''});
+      }}/>;
     }
     const remember=(reusable:boolean)=>{
       if(location.href!==href)return;
       if(access)localStorage.setItem(roomKey,access);
       if(reusable)localStorage.setItem(reusableKey,id);
       localStorage.setItem(lastKey,id);
-      history.replaceState(history.state,'',staffUrl(base,role,reusable&&role==='stage'?undefined:id));
+      const next=staffUrl(base,role,reusable&&role==='stage'?undefined:id);
+      if(next!==href){
+        history.replaceState(history.state,'',next);
+        setRoute({href:next,error:''});
+      }
     };
-    return <Staff key={role+id+token} id={id} role={role} token={token} base={base} onAuthorized={remember}/>;
+    const expired=(message:string)=>{
+      if(location.href!==href)return;
+      if(localStorage.getItem(roomKey)===token)localStorage.removeItem(roomKey);
+      const next=staffUrl(base,role,id);
+      history.replaceState(history.state,'',next);
+      setRoute({href:next,error:message});
+    };
+    return <Staff key={role+id+token} id={id} role={role} token={token} base={base} onAuthorized={remember} onUnauthorized={expired}/>;
   }
   const [role,id]=url.hash.replace(/^#\/?/,'').split('?')[0].split('/');
   if(role==='session'&&id)return <ParticipantApp key={id} id={id}/>;

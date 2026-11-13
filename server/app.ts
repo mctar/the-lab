@@ -22,6 +22,10 @@ const canShare = (p:Row,writeup:boolean,version:number) => writeup
   ? p.data.writeup===true && p.writeup_version===version
   : p.data.share===true && p.consent_version===version;
 const workshopRun = (s:Row) => requiredFlow({flowVersion:s.flow_version});
+const pairingRoles=z.enum(['host','stage']);
+const pairingAlphabet='0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+const pairingCode=z.string().max(32).transform(value=>value.toUpperCase().replace(/[\s-]/g,'').replace(/O/g,'0').replace(/[IL]/g,'1'))
+  .pipe(z.string().regex(/^[0-9A-HJKMNP-TV-Z]{10}$/));
 function liveWallKind(s:Row){
   if(s.stage_view!=='overview'&&s.stage_view!=='gallery')return null;
   if(s.phase===2&&!s.ends_at&&s.remaining_ms==null)return 'build';
@@ -106,6 +110,34 @@ export async function createApp(opts: Options) {
         VALUES($1,$2,$3,CASE WHEN $4::boolean AND $3='stage' THEN 'infinity'::timestamptz
           WHEN $4::boolean THEN now()+interval '1 year' ELSE now()+interval '30 days' END)`,[hash(t),id,role,b.reusable]);
     }); reply.code(201); return {id,code,title:b.title,reusable:b.reusable,hostToken,stageToken};
+  });
+  app.post('/v1/sessions/:id/pairing',async(req,reply)=>{
+    const id=idParam(req);
+    await auth(req,id,['host']);
+    limit('issue-pairing:'+id,20);
+    const {role}=z.object({role:pairingRoles}).strict().parse(req.body);
+    const code=Array.from(randomBytes(10),byte=>pairingAlphabet[byte&31]).join('');
+    const [pairing]=await db.query(`INSERT INTO staff_pairings (code_hash,session_id,role,expires_at)
+      VALUES ($1,$2,$3,now()+interval '10 minutes') RETURNING expires_at`,[hash(code),id,role]);
+    reply.code(201);
+    return {code:code.slice(0,5)+'-'+code.slice(5),expiresAt:new Date(pairing.expires_at).toISOString()};
+  });
+  app.post('/v1/staff/pair',async req=>{
+    limit('redeem-pairing:'+req.ip,60);
+    const {code,role,claim}=z.object({code:pairingCode,role:pairingRoles,claim:z.uuid()}).strict().parse(req.body);
+    return db.transaction(async q=>{
+      const [pairing]=await q(`UPDATE staff_pairings SET redeemed_by=$3
+        WHERE code_hash=$1 AND role=$2 AND expires_at>now() AND (redeemed_by IS NULL OR redeemed_by=$3)
+        RETURNING session_id`,[hash(code),role,claim]);
+      if(!pairing)fail(404,'This pairing code is unavailable. Ask the facilitator for a new code for this view.');
+      const s=await session(q,pairing.session_id);
+      // A retry from the same browser can recover a lost response without granting a second device access.
+      const token=createHmac('sha256',opts.adminToken).update(`staff-pair:${code}:${claim}`).digest('base64url');
+      await q(`INSERT INTO credentials(hash,session_id,role,expires_at)
+        VALUES ($1,$2,$3,now()+CASE WHEN $4::boolean THEN interval '1 year' ELSE interval '30 days' END)
+        ON CONFLICT(hash) DO NOTHING`,[hash(token),s.id,role,s.reusable]);
+      return {id:s.id,token,reusable:s.reusable};
+    });
   });
   app.post('/v1/join',async(req)=>{
     // A venue NAT can carry every participant. Admission budget accommodates the whole room.
@@ -312,7 +344,8 @@ export async function createApp(opts: Options) {
         collection.conceptReached=people.filter(row=>row.data.conceptCardReached===true||conceptOwners.has(row.id)).length;
         collection.buildsWithConcepts=builds.filter(row=>conceptOwners.has(row.participant_id)).length;
       }
-      return {session:sessionView(s),total:people.length,before,after,paired,transitions,works,feel,instructionEase,ideaLiking,biggestChange,progress,gallery,ideas,publication,collection,capturedAt:new Date().toISOString(),...(telemetry?{telemetry}:{})};
+      const projectorsOnline=host?[...streams].filter(client=>client.session===id&&client.role==='stage'&&!client.res.destroyed&&!client.res.writableEnded).length:undefined;
+      return {session:sessionView(s),total:people.length,before,after,paired,transitions,works,feel,instructionEase,ideaLiking,biggestChange,progress,gallery,ideas,publication,collection,projectorsOnline,capturedAt:new Date().toISOString(),...(telemetry?{telemetry}:{})};
     });
   }
   app.get('/v1/sessions/:id/snapshot',async req=>{const id=idParam(req),c=await auth(req,id,['host','stage']);return snapshot(id,c.role==='host');});
@@ -383,13 +416,15 @@ export async function createApp(opts: Options) {
     const id=idParam(req),c=await auth(req,id);if(streams.size>=1200) fail(503,'Live updates are busy. Retrying shortly.');
     reply.hijack();const res=reply.raw;
     res.writeHead(200,{...reply.getHeaders(),'Content-Type':'text/event-stream','Cache-Control':'no-store','Connection':'keep-alive','X-Accel-Buffering':'no'} as OutgoingHttpHeaders);
-    res.write('event: session\ndata: {}\n\n');const client={session:id,role:c.role,participant:c.participant_id,res};streams.add(client);if(c.role==='participant')notify(id,'telemetry');
+    res.write('event: session\ndata: {}\n\n');const client={session:id,role:c.role,participant:c.participant_id,res};streams.add(client);if(c.role!=='host')notify(id,'telemetry');
     const beat=setInterval(()=>{if(Date.now()>new Date(c.expires_at).getTime()) res.end();else res.write(': heartbeat\n\n');},15000);
-    res.on('close',()=>{clearInterval(beat);streams.delete(client);if(c.role==='participant')notify(id,'telemetry');});
+    res.on('close',()=>{clearInterval(beat);streams.delete(client);if(c.role!=='host')notify(id,'telemetry');});
   });
   let purge:Promise<void>|undefined;
   const maintainRetention=()=>{
-    purge ??= purgeExpiredData(db,photos).catch(error=>app.log.error(error,'Workshop retention cleanup failed')).finally(()=>{purge=undefined;});
+    purge ??= purgeExpiredData(db,photos)
+      .then(async()=>{await db.query('DELETE FROM staff_pairings WHERE expires_at<=now()');})
+      .catch(error=>app.log.error(error,'Workshop retention cleanup failed')).finally(()=>{purge=undefined;});
     return purge;
   };
   const retentionTimer=setInterval(maintainRetention,15*60000);retentionTimer.unref();
