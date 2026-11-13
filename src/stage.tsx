@@ -3,6 +3,7 @@ import {CHANGE_CHOICES,CHANGE_QUESTION,IDEA_LIKING,INSTRUCTION_EASE,INSTRUCTION_
 import {groupIdeaTitles,pairedMovement} from './stage-data';
 import {ComparisonWall,PhotoWall} from './stage-walls';
 import {RoundClock} from './round-clock';
+import {StageMusic} from './stage-music';
 import {IDEA_LIKING_QUESTION,REFLECTION_PROMPTS,stageCue,STAGE_STEPS,WORKSHOP_BRIEF,WORKSHOP_PROMPT_LABEL} from './workshop-flow';
 import './stage.css';
 
@@ -199,7 +200,14 @@ export function StageScreen({snapshot,connected,error,qr,joinUrl,photo}:StagePro
           {(sideClock||showSpotlight)&&<div className="cue-side">{sideClock&&<RoundClock session={s}/>} {showSpotlight&&<Spotlight cards={snapshot.gallery} paused={false} photo={photo}/>}</div>}
         </div>}
     </main>
-    <footer className="play-footer"><div className="phase-trail" aria-label="Session progress">{STAGE_STEPS.map((label,i)=><span key={label} className={cue.step===i?'current':cue.step>i?'past':''}><i>{i+1}</i><b>{label}</b></span>)}</div><div className="play-footer-actions"><button onClick={toggle} aria-pressed={motionPaused} disabled={reducedMotion}>{reducedMotion?'Reduced motion':motionPaused?'▶ Motion':'Ⅱ Motion'}</button><button onClick={()=>document.documentElement.requestFullscreen?.()}>⛶ Full screen</button><span className="stage-updated">Updated {new Date(snapshot.capturedAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</span></div></footer>
+    <footer className="play-footer">
+      <div className="phase-trail" aria-label="Session progress">{STAGE_STEPS.map((label,i)=><span key={label} className={cue.step===i?'current':cue.step>i?'past':''}><i>{i+1}</i><b>{label}</b></span>)}</div>
+      <div className="play-footer-actions">
+        <button onClick={toggle} aria-pressed={motionPaused} disabled={reducedMotion}>{reducedMotion?'Reduced motion':motionPaused?'▶ Motion':'Ⅱ Motion'}</button>
+        <button onClick={()=>document.documentElement.requestFullscreen?.()}>⛶ Full screen</button>
+        <StageMusic session={s} connected={connected&&!error}/>
+      </div>
+    </footer>
     {!lobby&&!s.closed&&<button className="play-join-tab" onClick={()=>setJoinOpen(true)} aria-label="Show the join QR code">{qr}<span>JOIN<strong>{s.code}</strong></span></button>}
     {error&&<p className="play-connection-note" role="status">{error} · Showing the last saved room picture.</p>}
     {joinOpen&&!s.closed&&<div className="play-join-overlay" role="dialog" aria-modal="true" aria-label="Join the session"><button className="join-overlay-close" onClick={()=>setJoinOpen(false)} aria-label="Close join code">×</button><p className="play-eyebrow">Scan with your phone</p><h2>Join the workshop</h2><a href={joinUrl}>{qr}</a>{manualJoin}</div>}

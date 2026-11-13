@@ -40,7 +40,7 @@ export function stageCue(session:Session){
   }
   if(revisedFlow(session)&&session.phase===2){
     if(session.exchange)return {title:'Show your neighbour',steps:['Show the person next to you what you built.','Take one minute each to say what you would change and hear their idea.','Choose one change to take back to your AI chat.'],step:3};
-    return {title:'Reflect on the first build',steps:required?[REFLECTION_PROMPTS[1],IDEA_LIKING_QUESTION,'What would you change first?']:['What would you change first?',REFLECTION_PROMPTS[1]],step:3};
+    return {title:'Reflect on the first build',steps:required?['What would you change first?',REFLECTION_PROMPTS[1],IDEA_LIKING_QUESTION]:['What would you change first?',REFLECTION_PROMPTS[1]],step:3};
   }
   if(required&&session.phase===3)return {title:'Make it yours',steps:['What’s the first thing you’d do to make this yours?','Take that change back to your AI chat.','The bricks were a prototype. Your idea can become a game, a ritual, a service, or an experience.'],step:4};
   if(required&&session.phase===4)return {title:'Make a concept card',steps:['Name your idea and describe it in one sentence.','Upload a final image, a screenshot, or a photo of a sketch.','Add one line about what changed.'],step:4};

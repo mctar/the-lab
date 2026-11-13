@@ -103,6 +103,18 @@
 .stage-manual-join { display: grid; gap: .2em; text-align: center; font-size: clamp(18px, 3vh, 36px); line-height: 1.25; }
 .stage-manual-join a { color: var(--play-paper); font-weight: 750; text-underline-offset: .15em; overflow-wrap: anywhere; }
 .stage-manual-join strong { color: var(--play-lime); font-size: 1.35em; font-weight: 800; letter-spacing: .08em; white-space: nowrap; }
+.stage-music { position:relative; }
+.stage-music[open] { z-index:6; }
+.stage-music summary { cursor:pointer; min-height:30px; padding:0; align-content:center; }
+.stage-music summary:focus-visible,.stage-music input:focus-visible { outline:3px solid var(--play-pink); }
+.stage-music-controls { position:absolute; bottom:calc(100% + 12px); left:0; width:min(335px,calc(100vw - 70px)); display:grid; gap:12px; padding:16px; border:1px solid #ffffff50; border-radius:10px; background:#20242d; color:var(--play-paper); font-size:14px; box-shadow:0 6px 24px #0008; }
+.stage-music-controls label { display:grid; gap:5px; font-weight:650; }
+.stage-music-controls input { width:100%; color:inherit; accent-color:var(--play-lime); }
+.stage-music-controls .stage-music-track { overflow-wrap:anywhere; color:var(--play-lime); }
+.stage-music-buttons { display:flex; align-items:end; gap:14px; }
+.stage-music-buttons label { min-width:0; flex:1; }
+.stage-music-buttons button { min-height:36px; padding:5px 9px; background:#111216; color:inherit; border:1px solid #ffffff50; border-radius:6px; }
+@media(max-width:650px) { .stage-music-controls { left:auto; right:-38px; } }
 .cue-board { display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; gap: clamp(30px, 4vw, 80px); }
 .cue-board.has-side { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); }
 .cue-main { min-width: 0; }

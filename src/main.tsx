@@ -122,7 +122,7 @@ function Staff({id,role,token,base,onAuthorized}:{id:string;role:StaffRole;token
     catch(e){setError((e as Error).message);}
   }
   let progress='';
-  if(revised&&s.phase===0)progress=`${ready} of ${snapshot.total} have instructions · ${skipping} reported no plan`;
+  if(revised&&s.phase===0)progress=`${ready} of ${snapshot.total} have instructions · ${skipping} checked in without instructions`;
   if(revised&&capturing)progress=collection
     ? `${collection.builds} of ${snapshot.total} build photos saved · ${collection.firstIdeas} original ideas saved`
     : `${firstIdeas.filter(card=>!card.hidden).length} first ideas ready to reveal`;

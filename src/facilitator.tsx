@@ -3,6 +3,7 @@ import {hasTimer,roundMinutes,WORKSHOP_NAME,type Snapshot} from '../server/model
 import {RoundClock} from './round-clock';
 import {Button} from './ui';
 import {stageCue} from './workshop-flow';
+import {ParticipantPreview} from './participant-preview';
 import './facilitator.css';
 
 const stages=['Lobby','AI plan','Build','Reflect','Develop','Concept cards','Debrief'];
@@ -36,6 +37,7 @@ export function FacilitatorDesk({snapshot,connected,error,busy,next,progress,fac
   const dialog=useRef<HTMLDialogElement>(null);
   const toolsBody=useRef<HTMLDivElement>(null);
   const counts=telemetry?.steps||snapshot.progress;
+  const activeGroup=session.closed?7:session.phase+1;
   function selectTool(section:Tool){
     setTool(section);
     if(toolsBody.current)toolsBody.current.scrollTop=0;
@@ -71,8 +73,8 @@ export function FacilitatorDesk({snapshot,connected,error,busy,next,progress,fac
           <div><p className="desk-label">Now</p><h2 id="desk-now">{cue.title}</h2></div>
           <RoundClock session={session} compact/>
         </div>
-        <ol className="desk-cues">{cue.steps.map(line=><li key={line}>{line}</li>)}</ol>
         {progress&&<p className="desk-progress" role="status">{progress}</p>}
+        <ol className="desk-cues">{cue.steps.map(line=><li key={line}>{line}</li>)}</ol>
         {facilitatorNote&&<p className="desk-note">{facilitatorNote}</p>}
         <div className="desk-current-actions">
           {hasTimer(session)&&!session.closed&&<div className="desk-timer-actions">
@@ -91,13 +93,14 @@ export function FacilitatorDesk({snapshot,connected,error,busy,next,progress,fac
           <div className={telemetry?.needsAttention?'warning':undefined}><dt>Needs attention</dt><dd>{telemetry?.needsAttention??0}</dd></div>
         </dl>
         {total?<ul className="desk-distribution" aria-label="Where people are in the workshop">
-          {activityGroups.map(({label,steps})=>{
+          {activityGroups.map(({label,steps},index)=>{
             const count=steps.reduce((sum,step)=>sum+(counts[step]||0),0);
-            return <li key={label}><span>{label}</span><meter min={0} max={total} value={count} aria-label={label}/><strong>{count}</strong></li>;
+            return <li key={label} className={index===activeGroup?'current':undefined}><span>{label}</span><meter min={0} max={total} value={count} aria-label={label}/><strong>{count}</strong></li>;
           })}
         </ul>:<p className="desk-empty">Waiting for participants to join.</p>}
         <div className="desk-room-actions"><Button onClick={()=>openTools('participants')}>Participant details</Button></div>
       </section>
+      <ParticipantPreview key={`${session.phase}:${session.exchange}:${hasTimer(session)}:${session.stageView==='final-exchange'}:${session.closed}`} session={session}/>
     </main>
     <dialog ref={dialog} className="desk-tools" aria-labelledby="desk-tools-heading" onClose={event=>{
       if(event.target===event.currentTarget&&!event.currentTarget.open)setToolsOpen(false);

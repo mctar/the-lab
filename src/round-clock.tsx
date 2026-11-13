@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { requiredFlow, revisedFlow, type Session } from '../server/model';
 
-export function RoundClock({session,compact=false}:{session:Session;compact?:boolean}){
+export function useRoundSeconds(session:Session){
   const [now,setNow]=useState(Date.now);
   const anchor=useRef({time:session.serverTime,received:Date.now()});
   if(anchor.current.time!==session.serverTime)anchor.current={time:session.serverTime,received:Date.now()};
@@ -15,11 +15,15 @@ export function RoundClock({session,compact=false}:{session:Session;compact?:boo
     return()=>{clearInterval(timer);document.removeEventListener('visibilitychange',tick);};
   },[running]);
   if(session.closed)return null;
-  const paused=session.remainingMs!==null;
   const serverNow=Date.parse(anchor.current.time)+Math.max(0,now-anchor.current.received);
-  const remaining=paused?session.remainingMs:session.endsAt?Date.parse(session.endsAt)-serverNow:null;
-  if(remaining===null)return null;
-  const seconds=Math.max(0,Math.ceil(remaining/1000));
+  const remaining=session.remainingMs??(session.endsAt?Date.parse(session.endsAt)-serverNow:null);
+  return remaining===null?null:Math.max(0,Math.ceil(remaining/1000));
+}
+
+export function RoundClock({session,compact=false}:{session:Session;compact?:boolean}){
+  const seconds=useRoundSeconds(session);
+  if(seconds===null)return null;
+  const paused=session.remainingMs!==null;
   const round:Partial<Record<number,string>>={0:requiredFlow(session)?'Get your AI instructions':'Get a plan',1:'Build',2:session.exchange?'Neighbour exchange':'Reflection',3:'Make it yours',5:'Final neighbour exchange'};
   const label=`${round[session.phase]||'Round'} · ${paused?'paused':seconds===0?'time is up':'time remaining'}`;
   const handoffCue=revisedFlow(session)&&session.phase===0&&seconds<=60&&!paused;
