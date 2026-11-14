@@ -61,3 +61,5 @@ ALTER TABLE assets ADD COLUMN IF NOT EXISTS publication_withdrawn boolean NOT NU
 ALTER TABLE participants ADD COLUMN IF NOT EXISTS retain_until timestamptz;
 CREATE INDEX IF NOT EXISTS participant_retention ON participants(retain_until) WHERE retain_until IS NOT NULL;
 CREATE TABLE IF NOT EXISTS expired_photo_files (asset_id uuid PRIMARY KEY);
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS soundtrack_id text;
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS soundtracks_played text[] NOT NULL DEFAULT '{}';

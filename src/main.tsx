@@ -104,7 +104,7 @@ function Staff({id,role,token,base,onAuthorized,onUnauthorized}:{id:string;role:
   if(!snapshot)return <Shell><h1>{host?'Session controls':'Opening the big screen'}</h1><p role="alert">{error||'Connecting to the session…'}</p><Button onClick={()=>void refresh()}>Reconnect</Button></Shell>;
 
   const s=snapshot.session,joinUrl=new URL('#/join?code='+s.code,import.meta.env.VITE_PUBLIC_URL||base).href,cards=snapshot.gallery;
-  if(!host)return <StageScreen key={s.run} snapshot={snapshot} connected={connected} error={error} joinUrl={joinUrl} qr={<QR url={joinUrl}/>} photo={(card,full)=><ProtectedPhoto key={card.assetId} id={id} token={token} asset={card.assetId!} alt={card.title||'A build from the room'} full={full}/>}/>;
+  if(!host)return <StageScreen key={s.run} token={token} snapshot={snapshot} connected={connected} error={error} joinUrl={joinUrl} qr={<QR url={joinUrl}/>} photo={(card,full)=><ProtectedPhoto key={card.assetId} id={id} token={token} asset={card.assetId!} alt={card.title||'A build from the room'} full={full}/>}/>;
 
   const capturing=s.phase===2&&!hasTimer(s);
   const buildFirst=buildFirstFlow(s);

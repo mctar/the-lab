@@ -10,7 +10,7 @@ To give a second Mac control, choose **Facilitate** in **Connect a Mac** and ent
 
 Before each run in the reusable room, use **Room tools → Session → Reset all…** if there’s a previous run. Leave the projector in the lobby. Participants join by scanning the QR or entering the room code at [The Lab](https://brick.btrbot.com/).
 
-For music, open **Countdown music** on the projector, choose an MP3 or WAV from that Mac, then select **Enable music** and set the volume. The track loops on every stage with a running countdown. It pauses with the timer and stops when time runs out. Choose the track again after a refresh or a reset.
+For music, open **Countdown music** on the projector, select **Enable music**, and set the volume. The projector loads the tracks from Hugin. Each timed activity gets a track, and the shuffle plays every available track before repeating. Pausing, resuming, restarting, or adding time keeps the same track. Music stops at zero. Select **Enable music** again after a refresh or room reset.
 
 Set out one matching brick kit per person, with spare pieces available. Confirm the piece list and count for your event when you pack the kits. Set seats so each person has a neighbour they can talk to. Check the phone, dashboard and projector in a disposable room.
 

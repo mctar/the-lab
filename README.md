@@ -84,6 +84,8 @@ The **Instructions** view shows the current audience cue in large type. The lobb
 
 The photo wall follows the workshop phases. Build photos and concept cards appear in groups, with recent submissions alongside. The reflection and final comparison show up to eight pairs at once, and closing vote totals appear alongside the final wall. The projector prepares the next group of thumbnails. Use the **Big screen** controls below the facilitator’s stage strip to choose a manual view or pause photos. Press **J** to enlarge the QR, **Escape** to dismiss it, or **M** to toggle decorative motion. Rehearsals are marked **DRY RUN**.
 
+Countdown music is served to authorized projector browsers from `soundtracks/` in the API’s persistent data directory (`/data/soundtracks` on Hugin). Add loop-ready PCM WAV files with unique lowercase, hyphen-separated names such as `build-loop.wav`. Put the file in place only after the transfer finishes. The server picks it up on the next timed activity. Keep the source audio or a copy of the soundtrack directory with release assets. Database and photo backups cover participant data.
+
 ## Running a rehearsal
 
 Use the [facilitator guide](FACILITATOR-GUIDE.md) for the room sequence. On the workshop Mac, the deployed rehearsal links are in `.runtime/dry-run-access.json` and the original event links are in `.runtime/session-access.json`. Locally provisioned rooms use `.runtime/session-<code>.json`. Use the full staff links in a fresh browser. Display only the participant QR or join link to the audience.

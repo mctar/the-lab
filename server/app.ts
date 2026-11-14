@@ -2,7 +2,7 @@ import Fastify, { type FastifyRequest } from 'fastify';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
-import { mkdir, writeFile, rename, unlink, stat } from 'node:fs/promises';
+import { mkdir, writeFile, rename, unlink, stat, lstat } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
 import { join } from 'node:path';
 import sharp from 'sharp';
@@ -12,6 +12,7 @@ import { database, type Database, type Query, type Row } from './db.js';
 import { mutation, cardInput, activityInput, resetInput, answerPatch, CARD_PHASE, CURRENT_FLOW_VERSION, FIRST_IDEA_LIMIT, TWISTS, buildFirstFlow, revisedFlow, requiredFlow, roundMinutes, isWriteupKind, type Session, type Participant, type Snapshot, type Card, type CollectionCounts } from './model.js';
 import { hostTelemetry } from './activity.js';
 import { purgeExpiredData } from './retention.js';
+import {nextSoundtrack,soundtrackId,soundtrackIds} from './soundtracks.js';
 
 const hash = (s: string) => createHash('sha256').update(s).digest('hex');
 const fail = (statusCode: number, message: string) => { throw Object.assign(new Error(message), { statusCode }); };
@@ -52,6 +53,11 @@ export async function createApp(opts: Options) {
   });
   const db = opts.db || await database(opts.databaseUrl, join(opts.dataDir, 'database'));
   const photos = join(opts.dataDir, 'photos'); await mkdir(photos, { recursive:true });
+  const soundtracks=join(opts.dataDir,'soundtracks'); await mkdir(soundtracks,{recursive:true});
+  const listSoundtracks=()=>soundtrackIds(soundtracks).catch(error=>{
+    app.log.warn(error,'Could not read the soundtrack library');
+    return [];
+  });
   const app = Fastify({ bodyLimit: 16384, logger: opts.logger ? { redact: ['req.headers.authorization'], serializers: { req: r => ({ method:r.method, url:r.url?.split('?')[0] }) } } : false, requestTimeout: 30000 });
   await app.register(cors, { origin:opts.origins, methods:['GET','POST','PATCH','DELETE'], allowedHeaders:['Content-Type','Authorization'] });
   await app.register(multipart, { limits: { fileSize:2*1024*1024, files:1, fields:0 } });
@@ -97,6 +103,21 @@ export async function createApp(opts: Options) {
     await q('INSERT INTO operations(owner,operation_id,digest,result) VALUES($1,$2,$3,$4)',[owner,op,digest,JSON.stringify(result)]); return result;
   }
   app.get('/health', async()=>{ await db.query('SELECT 1'); return {ok:true, service:'the-lab'}; });
+  app.get('/v1/sessions/:id/soundtracks',async req=>{
+    await auth(req,idParam(req),['stage']);
+    return {tracks:await listSoundtracks()};
+  });
+  app.get('/v1/sessions/:id/soundtracks/:track',async(req,reply)=>{
+    await auth(req,idParam(req),['stage']);
+    const track=z.string().max(80).regex(soundtrackId).parse((req.params as {track:string}).track);
+    const path=join(soundtracks,track+'.wav');
+    const entry=await lstat(path).catch(error=>{
+      if(error.code==='ENOENT')fail(404,'Soundtrack unavailable.');
+      throw error;
+    });
+    if(!entry.isFile())fail(404,'Soundtrack unavailable.');
+    return reply.type('audio/wav').header('Content-Length',entry.size).send(createReadStream(path));
+  });
   app.post('/v1/sessions',async(req,reply)=>{
     const token=req.headers.authorization?.replace(/^Bearer /,'') || '';
     if(!opts.adminToken || !timingSafeEqual(Buffer.from(hash(token)),Buffer.from(hash(opts.adminToken)))) fail(401,'Not authorized.');
@@ -345,7 +366,7 @@ export async function createApp(opts: Options) {
         collection.buildsWithConcepts=builds.filter(row=>conceptOwners.has(row.participant_id)).length;
       }
       const projectorsOnline=host?[...streams].filter(client=>client.session===id&&client.role==='stage'&&!client.res.destroyed&&!client.res.writableEnded).length:undefined;
-      return {session:sessionView(s),total:people.length,before,after,paired,transitions,works,feel,instructionEase,ideaLiking,biggestChange,progress,gallery,ideas,publication,collection,projectorsOnline,capturedAt:new Date().toISOString(),...(telemetry?{telemetry}:{})};
+      return {session:sessionView(s),total:people.length,before,after,paired,transitions,works,feel,instructionEase,ideaLiking,biggestChange,progress,gallery,ideas,publication,collection,projectorsOnline,capturedAt:new Date().toISOString(),...(telemetry?{telemetry}:{soundtrack:s.soundtrack_id})};
     });
   }
   app.get('/v1/sessions/:id/snapshot',async req=>{const id=idParam(req),c=await auth(req,id,['host','stage']);return snapshot(id,c.role==='host');});
@@ -357,7 +378,7 @@ export async function createApp(opts: Options) {
         if(s.revision!==b.expectedRevision)fail(409,'The session changed. Close this confirmation and try again.');
         if(b.confirmation!==s.code)fail(400,'Type the room code exactly to confirm the reset.');
         const [count]=await q('SELECT count(*) AS n FROM participants WHERE session_id=$1 AND run=$2',[id,s.run]);
-        const [next]=await q("UPDATE sessions SET run=run+1,revision=revision+1,phase=-1,closed=false,gallery_paused=false,stage_view='overview',ends_at=NULL,remaining_ms=NULL,flow_version=$2,exchange=false,first_revealed=false WHERE id=$1 RETURNING *",[id,CURRENT_FLOW_VERSION]);
+        const [next]=await q("UPDATE sessions SET run=run+1,revision=revision+1,phase=-1,closed=false,gallery_paused=false,stage_view='overview',ends_at=NULL,remaining_ms=NULL,flow_version=$2,exchange=false,first_revealed=false,soundtrack_id=NULL,soundtracks_played='{}' WHERE id=$1 RETURNING *",[id,CURRENT_FLOW_VERSION]);
         changed=true;return {session:sessionView(next),previous:sessionView(s),clearedParticipants:Number(count.n)};
       });
     });
@@ -383,7 +404,8 @@ export async function createApp(opts: Options) {
         ends=minutes && phase!==2 ? now+minutes*60000 : null;
         remaining=null;
       }
-      if(stageView!==s.stage_view&&(stageView==='final-exchange'||s.stage_view==='final-exchange'&&!phaseChanged)){
+      const finalExchangeStarted=stageView==='final-exchange'&&stageView!==s.stage_view;
+      if(finalExchangeStarted||s.stage_view==='final-exchange'&&stageView!==s.stage_view&&!phaseChanged){
         ends=stageView==='final-exchange'?now+minutes!*60000:null;
         remaining=null;
       }
@@ -394,7 +416,16 @@ export async function createApp(opts: Options) {
         else if(remaining!==null) remaining+=60000;
       }
       if((b.timer==='reset'||b.exchange) && minutes) {ends=now+minutes*60000;remaining=null;}
-      const [r]=await q('UPDATE sessions SET phase=$1,ends_at=$2,remaining_ms=$3,gallery_paused=$4,stage_view=$5,closed=$6,exchange=$7,first_revealed=$8,revision=revision+1 WHERE id=$9 RETURNING *',[phase,ends?new Date(ends):null,remaining,b.galleryPaused??s.gallery_paused,stageView,b.closed??s.closed,exchange,firstRevealed,id]);return sessionView(r);
+      const closed=b.closed??s.closed;
+      let track=s.soundtrack_id,played=s.soundtracks_played;
+      const newActivity=phaseChanged||b.exchange||finalExchangeStarted||(!s.ends_at&&s.remaining_ms==null);
+      if(!closed&&(ends!==null||remaining!==null)&&(newActivity||!track)){
+        ({track,played}=nextSoundtrack(await listSoundtracks(),played,track));
+      }
+      const [r]=await q(`UPDATE sessions SET phase=$1,ends_at=$2,remaining_ms=$3,gallery_paused=$4,stage_view=$5,closed=$6,
+        exchange=$7,first_revealed=$8,soundtrack_id=$10,soundtracks_played=$11,revision=revision+1 WHERE id=$9 RETURNING *`,
+        [phase,ends!==null?new Date(ends):null,remaining,b.galleryPaused??s.gallery_paused,stageView,closed,exchange,firstRevealed,id,track,played]);
+      return sessionView(r);
     });notify(id,'session');return out;
   });
   app.patch('/v1/sessions/:id/cards/:card',async req=>{const id=idParam(req);await auth(req,id,['host']);const b=z.object({hidden:z.boolean()}).strict().parse(req.body);const card=z.uuid().parse((req.params as any).card);await db.transaction(async q=>{const [s]=await q('SELECT run FROM sessions WHERE id=$1 FOR SHARE',[id]);const rows=await q('UPDATE submissions SET hidden=$1 WHERE id=$2 AND session_id=$3 AND participant_id IN (SELECT id FROM participants WHERE session_id=$3 AND run=$4) RETURNING id',[b.hidden,card,id,s.run]);if(!rows.length)fail(404,'This card is no longer in the current session.');});notify(id);return {ok:true};});

@@ -9,7 +9,7 @@ import './stage.css';
 
 const COLORS=['#f48bce','#83c9ff','#b4ee6b'];
 const PALE=['#f9c8e7','#c9e7ff','#d5f7ad'];
-type StageProps={snapshot:Snapshot;connected:boolean;error:string;qr:React.ReactNode;joinUrl:string;photo:(card:Card,full?:boolean)=>React.ReactNode};
+type StageProps={snapshot:Snapshot;token:string;connected:boolean;error:string;qr:React.ReactNode;joinUrl:string;photo:(card:Card,full?:boolean)=>React.ReactNode};
 const styleVars=(values:Record<string,string|number>)=>values as CSSProperties;
 
 function Brick({className='',color,style}:{className?:string;color?:string;style?:CSSProperties}){
@@ -148,7 +148,7 @@ function ClosingChanges({snapshot}:{snapshot:Snapshot}){
   </section>;
 }
 
-export function StageScreen({snapshot,connected,error,qr,joinUrl,photo}:StageProps){
+export function StageScreen({snapshot,token,connected,error,qr,joinUrl,photo}:StageProps){
   const s=snapshot.session,cue=stageCue(s),view=s.stageView,lobby=s.phase<0&&!s.closed,required=requiredFlow(s);
   const buildFirst=buildFirstFlow(s);
   const {enabled:motion,paused:motionPaused,forced:reducedMotion,toggle}=useMotion();
@@ -206,7 +206,7 @@ export function StageScreen({snapshot,connected,error,qr,joinUrl,photo}:StagePro
       <div className="play-footer-actions">
         <button onClick={toggle} aria-pressed={motionPaused} disabled={reducedMotion}>{reducedMotion?'Reduced motion':motionPaused?'▶ Motion':'Ⅱ Motion'}</button>
         <button onClick={()=>document.documentElement.requestFullscreen?.()}>⛶ Full screen</button>
-        <StageMusic session={s} connected={connected&&!error}/>
+        <StageMusic session={s} connected={connected&&!error} track={snapshot.soundtrack} token={token}/>
       </div>
     </footer>
     {!lobby&&!s.closed&&<button className="play-join-tab" onClick={()=>setJoinOpen(true)} aria-label="Show the join QR code">{qr}<span>JOIN<strong>{s.code}</strong></span></button>}
